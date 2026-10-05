@@ -328,10 +328,7 @@ main:focus, .boss__name:focus { outline: none; }
 /* ---------- Raid-Kalender ---------- */
 
 .schedule { margin-bottom: 30px; }
-.schedule .section-title { margin-bottom: 12px; }
-.schedule__groups { display: grid; gap: 16px; }
-.schedule__title { margin: 0 0 8px; font-size: .78rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-.schedule__group--now .schedule__title { color: var(--now); }
+.schedule .section-title { margin-bottom: 12px; color: var(--text); }
 .schedule__list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -340,7 +337,92 @@ main:focus, .boss__name:focus { outline: none; }
   padding: 0;
   list-style: none;
 }
-.schedule__group--now .boss-tile { border-color: #6ee78766; background: linear-gradient(160deg, #6ee78714, var(--panel)); }
+#schedule-now .boss-tile { border-color: #6ee78766; background: linear-gradient(160deg, #6ee78714, var(--panel)); }
+.schedule__soon { margin-top: 14px; }
+.schedule__soon > summary, .by-type > summary, .more-settings > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+.schedule__soon > summary::-webkit-details-marker, .by-type > summary::-webkit-details-marker, .more-settings > summary::-webkit-details-marker { display: none; }
+.schedule__soon > summary::after, .by-type > summary::after, .more-settings > summary::after {
+  content: '';
+  width: 7px; height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  rotate: 45deg;
+  translate: 0 -2px;
+  transition: rotate .2s var(--ease);
+}
+.schedule__soon[open] > summary::after, .by-type[open] > summary::after, .more-settings[open] > summary::after { rotate: -135deg; translate: 0 2px; }
+.schedule__soon > summary:hover, .by-type > summary:hover, .more-settings > summary:hover { color: var(--text); border-color: #ffffff40; }
+.schedule__list--soon { margin-top: 12px; }
+
+/* ---------- Startseite: Raid-Arten ---------- */
+
+.start { margin-bottom: 20px; }
+.category-grid {
+  display: grid;
+  /* Auf dem Handy zwei Spalten: So sind alle Raid-Arten auf einen Blick zu sehen. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.category-card {
+  --b: var(--raid);
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 4px;
+  height: 100%;
+  padding: 12px 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--b) 45%, var(--line));
+  background: radial-gradient(400px 200px at 100% 0%, color-mix(in srgb, var(--b) 18%, transparent), transparent 70%), linear-gradient(160deg, var(--panel-2), var(--panel));
+  color: inherit;
+  text-decoration: none;
+  box-shadow: var(--shadow);
+  transition: transform .2s var(--ease), border-color .2s;
+}
+.category-card:hover { transform: translateY(-3px); border-color: var(--b); }
+.category-card:hover img { transform: scale(1.08); }
+.category-card--mythical { --b: var(--myth); }
+.category-card--ultrabeast { --b: var(--ultra); }
+.category-card--mega { --b: var(--mega); }
+.category-card--primal { --b: var(--primal); }
+.category-card--shadow { --b: var(--crypto); }
+.category-card__art { display: flex; gap: 2px; margin-bottom: 6px; }
+.category-card__art .art--sm { width: 42px; border-radius: 10px; }
+.category-card__title { font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; line-height: 1.1; color: color-mix(in srgb, var(--b) 35%, #fff); }
+.category-card__text { color: var(--muted); font-size: .82rem; line-height: 1.35; }
+.category-card__count { display: block; color: var(--text); font-weight: 700; }
+.category-card .badge { justify-self: start; margin-top: 4px; }
+
+.search-results { margin-top: 4px; }
+.search-results .section-head__count { margin: 0 0 12px; }
+
+/* ---------- Boss-Liste einer Raid-Art ---------- */
+
+.category-head { --b: var(--raid); margin: 4px 0 16px; }
+.category-head--mythical { --b: var(--myth); }
+.category-head--ultrabeast { --b: var(--ultra); }
+.category-head--mega { --b: var(--mega); }
+.category-head--primal { --b: var(--primal); }
+.category-head--shadow { --b: var(--crypto); }
+.category-head__eyebrow { margin: 0 0 2px; font-size: .78rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--b) 70%, #fff); }
+.category-head .section-head__count { margin: 6px 0 0; color: var(--muted); }
 
 /* ---------- Bosse suchen und filtern ---------- */
 
@@ -393,31 +475,6 @@ main:focus, .boss__name:focus { outline: none; }
 }
 .search__clear:hover { background: #ffffff24; color: var(--text); }
 
-/* Auswahl-Chips (Raid-Art): umbrechend statt Wischleiste, damit alle sofort sichtbar sind. */
-.chips { margin: 0; padding: 0; border: 0; min-width: 0; }
-.chips__options { display: flex; flex-wrap: wrap; gap: 6px; }
-.chips label { position: relative; }
-.chips input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
-.chips span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 40px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  font-weight: 700;
-  font-size: .9rem;
-  color: var(--muted);
-  pointer-events: none;
-  transition: background .2s var(--ease), color .2s var(--ease), border-color .2s;
-}
-.chips small { font-size: .72rem; opacity: .8; }
-.chips label:hover span { color: var(--text); border-color: #ffffff40; }
-.chips input:checked + span { background: var(--raid); border-color: var(--raid); color: #fff; }
-.chips input:focus-visible + span { outline: 3px solid var(--gold); outline-offset: 2px; }
-
 .boss-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
@@ -447,8 +504,26 @@ main:focus, .boss__name:focus { outline: none; }
 .boss-tile__meta { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 5px; }
 .boss-tile .badge { font-size: .6rem; padding: 0 5px; }
 .boss-tile .badge--now, .boss-tile .badge--soon { margin-top: 2px; font-size: .7rem; }
-.schedule .boss-tile { padding: 10px 8px 12px; }
-.schedule .boss-tile__name { font-size: .9rem; }
+#schedule-now .boss-tile { padding: 10px 8px 12px; }
+#schedule-now .boss-tile__name { font-size: .9rem; }
+
+/* Handy: "Jetzt im Raid" als schmale Zeilen, damit die Raid-Arten gleich darunter sichtbar sind. */
+@media (max-width: 719.98px) {
+  #schedule-now { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  #schedule-now .boss-tile {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "art name" "art meta";
+    justify-items: start;
+    align-content: center;
+    column-gap: 12px;
+    row-gap: 3px;
+    padding: 8px 12px;
+  }
+  #schedule-now .boss-tile .art { grid-area: art; width: 52px; border-radius: 12px; }
+  #schedule-now .boss-tile__name { grid-area: name; align-self: end; text-align: left; font-size: .95rem; }
+  #schedule-now .boss-tile__meta { grid-area: meta; align-self: start; justify-content: flex-start; }
+  #schedule-now .boss-tile .badge--now { display: none; }
+}
 
 /* ---------- Detail: Boss ---------- */
 
@@ -482,6 +557,7 @@ main:focus, .boss__name:focus { outline: none; }
 .boss--mega, .boss--megaLegendary { --b: var(--mega); }
 .boss--primal { --b: var(--primal); }
 .boss--shadow { --b: var(--crypto); }
+.boss .art--lg { width: min(160px, 44vw); }
 .boss .art--lg img { animation: float 6s ease-in-out infinite; }
 .boss__info { width: 100%; min-width: 0; }
 .boss__label { margin: 0; font-size: .78rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--b) 70%, #fff); }
@@ -545,6 +621,43 @@ main:focus, .boss__name:focus { outline: none; }
 
 .move { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .move__name { font-weight: 700; }
+
+/* ---------- Detail: Reiter ---------- */
+
+.boss__weak { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 12px 0 0; }
+.boss__weak-label { font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.facts--boss dt { line-height: 1.3; }
+
+.tabs {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 0 0 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #161a33f2;
+  backdrop-filter: blur(8px);
+}
+.tabs__btn {
+  flex: 1;
+  min-height: 46px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 1rem;
+  transition: background .2s, color .2s;
+}
+.tabs__btn:hover { color: var(--text); }
+.tabs__btn[aria-selected="true"] { background: var(--raid); color: #fff; }
+.tab-panel { outline: none; }
+.tab-panel > .boss__note { margin: 0 0 14px; }
+
+.section-title--small { font-size: clamp(1.25rem, 4.5vw, 1.6rem); }
 
 /* ---------- Detail: Filter ---------- */
 
@@ -612,6 +725,23 @@ main:focus, .boss__name:focus { outline: none; }
 .select select:focus { outline: none; border-color: var(--raid); box-shadow: 0 0 0 4px var(--raid-soft); }
 
 .counter-controls__toggles { display: flex; flex-wrap: wrap; gap: 2px 20px; }
+
+/* Der Crypto-Schalter steht groß und sichtbar: Er verändert die Liste am stärksten. */
+.crypto-switch {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #d24bff55;
+  background: var(--crypto-soft);
+}
+.crypto-switch .toggle { color: var(--text); font-size: 1.02rem; }
+.crypto-switch .toggle input:checked + .toggle__track { background: var(--crypto); }
+
+.toggle__text { display: grid; line-height: 1.25; }
+.toggle__text small { font-size: .78rem; font-weight: 600; color: var(--muted); }
+
+.more-settings { grid-column: 1 / -1; }
+.more-settings__body { display: grid; gap: 14px; margin-top: 14px; }
+.boss-moves__group .control-label { margin-bottom: 6px; }
 
 .toggle {
   position: relative;
@@ -745,7 +875,14 @@ main:focus, .boss__name:focus { outline: none; }
 
 /* ---------- Detail: Beste je Typ ---------- */
 
+.megas { margin-bottom: 26px; padding: 16px; border-radius: var(--radius); border: 1px solid #ff9a3d55; background: linear-gradient(170deg, #ff9a3d14, var(--panel) 60%); }
+.megas .section-head { margin-bottom: 10px; }
+.megas .section-head p { font-size: .9rem; }
+.rows--compact .row { background: #0b0d1880; }
+
 .by-type { margin-bottom: 20px; }
+.by-type > summary small { font-weight: 600; }
+.by-type[open] > summary { margin-bottom: 12px; }
 .by-type__grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); }
 .type-card {
   padding: 14px;
@@ -821,8 +958,15 @@ main:focus, .boss__name:focus { outline: none; }
   .hero { padding-top: 28px; }
   .boss-grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
   .schedule__list { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  .schedule__list--soon { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+  .category-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .category-card { padding: 16px 18px 18px; }
+  .category-card__art .art--sm { width: 56px; border-radius: 12px; }
+  .category-card__title { font-size: 1.5rem; }
+  .category-card__text { font-size: .9rem; }
 
   .boss { grid-template-columns: auto minmax(0, 1fr); justify-items: start; align-items: center; gap: 28px; padding: 24px 28px; }
+  .boss .art--lg { width: 200px; }
   .facts--boss { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
@@ -839,7 +983,5 @@ main:focus, .boss__name:focus { outline: none; }
 }
 
 @media (min-width: 1000px) {
-  .schedule__groups { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
-  .schedule__groups > :only-child { grid-column: 1 / -1; }
   .method__grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

@@ -68,117 +68,180 @@ function expectedCatch(boss, boosted) {
   return { min: cp(tier.catchIvFloor), max: cp(15) };
 }
 
+// Raid-Art (Kachel auf der Startseite) zu jeder Kategorie aus den Daten. Mega umfasst Mega-Legendär.
+const GROUP_OF = { legendary: 'legendary', mega: 'mega', megaLegendary: 'mega', shadow: 'shadow', ultrabeast: 'ultrabeast', mythical: 'mythical', primal: 'primal' };
+const GROUP_HEADINGS = {
+  legendary: 'Legendäre Raid-Bosse', mega: 'Mega-Raid-Bosse', shadow: 'Crypto-Raid-Bosse',
+  ultrabeast: 'Ultrabestien', mythical: 'Mysteriöse Raid-Bosse', primal: 'Proto-Raid-Bosse',
+};
+const bossesOf = (group) => DATA.bosses.filter((b) => GROUP_OF[b.category] === group).map((b) => b.key);
+const isMegaAttacker = (a) => a.variant === 'mega' || a.variant === 'primal';
+const RANK_ALL = { level: 40, elite: true, weather: null, shadow: true, mega: true, legendary: true };
+const nameOf = (a) => (a.shadow ? `Crypto-${a.name}` : a.name);
+
 // ---------- Zustand der Seite auslesen ----------
 
-const overviewState = (page) => page.eval(`(() => ({
-  visible: !document.getElementById('view-overview').hidden,
-  tiles: [...document.querySelectorAll('#boss-grid > li')].filter((li) => !li.hidden).map((li) => li.dataset.boss),
-  count: document.getElementById('bosses-count').textContent,
-  filter: document.querySelector('input[name=category]:checked')?.value,
-  chipCounts: Object.fromEntries([...document.querySelectorAll('#category-options label')].map((l) => [l.querySelector('input').value, Number(l.querySelector('small').textContent)])),
+const startState = (page) => page.eval(`(() => ({
+  visible: !document.getElementById('view-start').hidden,
+  cards: [...document.querySelectorAll('#category-grid .category-card')].map((a) => ({
+    id: a.dataset.category,
+    count: Number(/(\\d+) Bosse/.exec(a.querySelector('.category-card__text').textContent)?.[1]),
+    now: Number(/(\\d+)/.exec(a.querySelector('.badge--now')?.textContent ?? '0')[1]),
+    images: a.querySelectorAll('img').length,
+  })),
+  cardsVisible: !document.getElementById('category-grid').hidden,
+  searchVisible: !document.getElementById('search-results').hidden,
+  hits: [...document.querySelectorAll('#search-grid .boss-tile')].map((a) => a.dataset.boss),
+  searchCount: document.getElementById('search-count').textContent,
+  scheduleVisible: !document.getElementById('schedule').hidden,
   now: [...document.querySelectorAll('#schedule-now .boss-tile')].map((a) => a.dataset.boss),
   soon: [...document.querySelectorAll('#schedule-soon .boss-tile')].map((a) => ({ key: a.dataset.boss, badge: a.querySelector('.badge--soon')?.textContent })),
-  empty: !document.getElementById('boss-empty').hidden,
+  soonCount: document.getElementById('schedule-soon-count').textContent,
+  soonOpen: document.getElementById('schedule-soon-wrap').open,
   clearVisible: !document.getElementById('search-clear').hidden,
   meta: document.getElementById('data-meta').textContent,
+  overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+}))()`);
+
+const categoryState = (page) => page.eval(`(() => ({
+  visible: !document.getElementById('view-category').hidden,
+  title: document.getElementById('category-title')?.textContent,
+  count: document.getElementById('category-count')?.textContent,
+  tiles: [...document.querySelectorAll('#category-grid-list > li')].map((li) => li.dataset.boss),
+  focused: document.activeElement?.id,
+  docTitle: document.title,
   overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
 }))()`);
 
 const detailState = (page) => page.eval(`(() => {
   const facts = Object.fromEntries([...document.querySelectorAll('.facts--boss div')].map((d) => [d.querySelector('dt').textContent, d.querySelector('dd').textContent]));
   const cpRows = [...document.querySelectorAll('.cp-table tbody tr')].map((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent));
+  const row = (li) => ({
+    name: li.querySelector('.row__name span').textContent,
+    score: parseFloat(li.querySelector('.meter strong').textContent.replace(/[’'\\s%]/g, '').replace(',', '.')),
+    dps: parseFloat(li.querySelector('.row__numbers span:first-child strong').textContent.replace(/[’']/g, '')),
+    shadow: !!li.querySelector('.row__name .badge--shadow'),
+    mega: !!li.querySelector('.row__name .badge--mega, .row__name .badge--primal'),
+    elite: !!li.querySelector('.badge--elite'),
+  });
   return {
     visible: !document.getElementById('view-detail').hidden,
     title: document.getElementById('detail-title')?.textContent,
+    back: document.getElementById('back')?.textContent,
     label: document.querySelector('.boss__label')?.textContent,
     facts,
     cpRows,
+    bossHp: (/Als Raid-Boss: ([\\d’']+) KP/.exec(document.querySelector('#tab-panel')?.textContent ?? '') ?? [])[1],
+    tab: document.querySelector('.tabs__btn[aria-selected="true"]')?.id,
     team: [...document.querySelectorAll('#team-members .member')].map((m) => ({
       name: m.querySelector('.member__name span').textContent,
       mega: !!m.querySelector('.badge--mega, .badge--primal'),
     })),
     verdict: document.getElementById('team-verdict')?.textContent ?? '',
     verdictStrong: document.querySelector('#team-verdict strong')?.textContent ?? '',
-    randomMoves: document.querySelectorAll('#counter-list .type-random, #team-members .type-random').length,
-    rows: [...document.querySelectorAll('#counter-list > li')].map((li) => ({
-      name: li.querySelector('.row__name span').textContent,
-      score: parseFloat(li.querySelector('.meter strong').textContent.replace(/[’'\\s%]/g, '').replace(',', '.')),
-      dps: parseFloat(li.querySelector('.row__numbers span:first-child strong').textContent.replace(/[’']/g, '')),
-      shadow: !!li.querySelector('.row__name .badge--shadow'),
-      mega: !!li.querySelector('.row__name .badge--mega, .row__name .badge--primal'),
-      elite: !!li.querySelector('.badge--elite'),
-    })),
+    randomMoves: document.querySelectorAll('#counter-list .type-random, #team-members .type-random, #mega-list .type-random').length,
+    rows: [...document.querySelectorAll('#counter-list > li')].map(row),
+    megas: [...document.querySelectorAll('#mega-list > li')].map(row),
     countText: document.getElementById('counters-count')?.textContent,
     byType: document.querySelectorAll('.type-card').length,
     more: !!document.getElementById('more'),
+    moreOpen: !!document.getElementById('more-settings')?.open,
     reset: !!document.getElementById('reset'),
+    megaToggle: !!document.getElementById('toggle-mega'),
+    cryptoHint: document.querySelector('.crypto-switch small')?.textContent,
     level: document.querySelector('input[name=level]:checked')?.value,
     weather: document.getElementById('weather')?.value,
-    toggles: Object.fromEntries([...document.querySelectorAll('.counter-controls__toggles input')].map((i) => [i.id, i.checked])),
+    toggles: Object.fromEntries([...document.querySelectorAll('#counter-controls input[type=checkbox]')].map((i) => [i.id, i.checked])),
     pressed: [...document.querySelectorAll('.move-btn[aria-pressed="true"]')].map((b) => b.dataset.kind + ':' + b.dataset.move),
     overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
     title2: document.title,
   };
 })()`);
 
-// ---------- Übersicht ----------
+// Alle Bilder in einem Bereich laden und kaputte melden.
+const brokenImages = (page, selector) => page.eval(`(async () => {
+  const imgs = [...document.querySelectorAll(${JSON.stringify(selector)})];
+  for (const img of imgs) { img.loading = 'eager'; }
+  await Promise.all(imgs.map((img) => img.decode().catch(() => null)));
+  return imgs.filter((img) => !img.naturalWidth).map((img) => img.getAttribute('src'));
+})()`);
 
-async function testOverview(page, vp) {
-  const tag = `[${vp.label} · Übersicht]`;
+// ---------- Startseite und Raid-Arten ----------
+
+async function testStart(page, vp) {
+  const tag = `[${vp.label} · Startseite]`;
   console.log(`${tag} läuft …`);
+  const unknown = DATA.bosses.filter((b) => !GROUP_OF[b.category]);
+  check(unknown.length === 0, `${tag} Bosse ohne Raid-Art (nicht erreichbar): ${unknown.map((b) => b.key).join(', ')}`);
   await page.goto(url('index.html'));
-  let s = await overviewState(page);
-  check(s.visible && s.tiles.length === DATA.bosses.length, `${tag} ${s.tiles.length} Kacheln statt ${DATA.bosses.length}`);
+  let s = await startState(page);
+  const groups = Object.keys(GROUP_HEADINGS).filter((g) => bossesOf(g).length);
+  check(s.visible && JSON.stringify(s.cards.map((c) => c.id)) === JSON.stringify(groups), `${tag} Raid-Arten ${s.cards.map((c) => c.id).join(', ')} statt ${groups.join(', ')}`);
+  for (const c of s.cards) {
+    check(c.count === bossesOf(c.id).length, `${tag} Kachel ${c.id} zählt ${c.count} statt ${bossesOf(c.id).length} Bosse`);
+    check(c.images === Math.min(3, c.count), `${tag} Kachel ${c.id} zeigt ${c.images} Vorschaubilder`);
+  }
+  check(s.cards.reduce((n, c) => n + c.count, 0) === DATA.bosses.length, `${tag} Kacheln zählen nicht alle ${DATA.bosses.length} Bosse`);
+  check(s.cardsVisible && !s.searchVisible, `${tag} Startseite zeigt Suchergebnisse statt Raid-Arten`);
   check(s.meta.startsWith(`${DATA.bosses.length} Raid-Bosse`), `${tag} Kopfzeile "${s.meta}"`);
+  check(!s.soonOpen, `${tag} "Demnächst im Raid" ist schon aufgeklappt`);
   check(!s.overflow, `${tag} Seite ist breiter als der Bildschirm`);
   check(await page.eval(`document.querySelectorAll('#sources a').length === Object.values(window.RAID_DATA.sources).filter((x) => x && x.url).length`),
     `${tag} Fußzeile verlinkt nicht jede Quelle aus den Daten`);
-
-  // Jede Raid-Art einmal: Zähler am Chip = Zahl der Kacheln = Text über der Liste.
-  for (const filter of Object.keys(s.chipCounts)) {
-    await page.click(`#category-options input[value="${filter}"]`);
-    s = await overviewState(page);
-    check(s.filter === filter && s.tiles.length === s.chipCounts[filter] && s.count === `${s.tiles.length} von ${DATA.bosses.length} Bossen`,
-      `${tag} Raid-Art ${filter}: ${s.tiles.length} Kacheln, Chip zeigt ${s.chipCounts[filter]}, Text "${s.count}"`);
-    const wrong = s.tiles.filter((key) => {
-      const cat = DATA.bosses.find((b) => b.key === key).category;
-      return filter !== 'all' && cat !== filter && !(filter === 'mega' && cat === 'megaLegendary');
-    });
-    check(wrong.length === 0, `${tag} Raid-Art ${filter} zeigt fremde Bosse: ${wrong.join(', ')}`);
-  }
-  check(s.chipCounts.all === DATA.bosses.length, `${tag} Chip "Alle" zählt ${s.chipCounts.all}`);
-  await page.click('#category-options input[value="all"]');
-
-  // Suche: deutsch, ohne Akzente, und leeren.
-  await page.type('#search', 'xerneas');
-  s = await overviewState(page);
-  check(s.tiles.length === 1 && s.tiles[0] === 'xerneas' && s.clearVisible, `${tag} Suche "xerneas" zeigt ${s.tiles.join(', ')}`);
-  await page.type('#search', 'mewtu');
-  s = await overviewState(page);
-  check(s.tiles.length >= 3 && s.tiles.every((k) => k.includes('mewtwo')), `${tag} Suche "mewtu" zeigt ${s.tiles.join(', ')}`);
-  await page.type('#search', 'qqqq');
-  s = await overviewState(page);
-  check(s.tiles.length === 0 && s.empty, `${tag} Suche ohne Treffer zeigt keinen Hinweis`);
-  await page.click('#search-clear');
-  s = await overviewState(page);
-  check(s.tiles.length === DATA.bosses.length && !s.clearVisible && !s.empty, `${tag} Suche leeren stellt nicht alle Kacheln her`);
-
-  // Suche + Raid-Art kombiniert
-  await page.click('#category-options input[value="shadow"]');
-  await page.type('#search', 'ho-oh');
-  s = await overviewState(page);
-  check(s.tiles.length === 1 && s.tiles[0] === 'crypto-ho-oh', `${tag} Crypto + "ho-oh" zeigt ${s.tiles.join(', ')}`);
-  await page.click('#search-clear');
-  await page.click('#category-options input[value="all"]');
-
-  // Bilder: alle sichtbaren Kachelbilder sind geladen (keine kaputten Bilder).
-  const broken = await page.eval(`(async () => {
-    const imgs = [...document.querySelectorAll('#view-overview img')];
-    for (const img of imgs) { img.loading = 'eager'; }
-    await Promise.all(imgs.map((img) => img.decode().catch(() => null)));
-    return imgs.filter((img) => !img.naturalWidth).map((img) => img.getAttribute('src'));
-  })()`);
+  const broken = await brokenImages(page, '#view-start img');
   check(broken.length === 0, `${tag} Bilder laden nicht: ${broken.slice(0, 5).join(', ')}`);
+
+  // Jede Raid-Art öffnen: genau ihre Bosse, und zurück mit Fokus auf ihrer Kachel.
+  for (const g of groups) {
+    const ctag = `${tag} Raid-Art ${g}:`;
+    await page.click(`#category-grid .category-card[data-category="${g}"]`);
+    const c = await categoryState(page);
+    const expected = bossesOf(g);
+    check(c.visible && c.title === GROUP_HEADINGS[g], `${ctag} Überschrift "${c.title}"`);
+    check(c.tiles.length === expected.length && c.tiles.every((k) => expected.includes(k)), `${ctag} ${c.tiles.length} Kacheln statt ${expected.length} (fremd: ${c.tiles.filter((k) => !expected.includes(k)).join(', ')})`);
+    check(c.count.startsWith(`${expected.length} Bosse`), `${ctag} Text "${c.count}"`);
+    check(c.focused === 'category-title' && c.docTitle.startsWith(GROUP_HEADINGS[g]), `${ctag} Fokus ${c.focused}, Fenstertitel "${c.docTitle}"`);
+    check(!c.overflow, `${ctag} Seite ist breiter als der Bildschirm`);
+    if (vp.every === 1) {
+      const b = await brokenImages(page, '#view-category img');
+      check(b.length === 0, `${ctag} Bilder laden nicht: ${b.slice(0, 5).join(', ')}`);
+    }
+    await page.click('#category-back');
+    await sleep(150);
+    s = await startState(page);
+    const focused = await page.eval(`document.activeElement?.dataset?.category`);
+    check(s.visible && focused === g, `${ctag} Zurück: Startseite ${s.visible ? 'sichtbar' : 'fehlt'}, Fokus auf ${focused}`);
+  }
+
+  // Suche über alle Raid-Arten: deutsch, ohne Akzente, und leeren.
+  await page.type('#search', 'xerneas');
+  s = await startState(page);
+  check(JSON.stringify(s.hits) === '["xerneas"]' && s.clearVisible && !s.cardsVisible && s.searchVisible, `${tag} Suche "xerneas" zeigt ${s.hits.join(', ')}`);
+  await page.type('#search', 'mewtu');
+  s = await startState(page);
+  check(s.hits.length >= 3 && s.hits.every((k) => k.includes('mewtwo')), `${tag} Suche "mewtu" zeigt ${s.hits.join(', ')}`);
+  await page.type('#search', 'ho-oh');
+  s = await startState(page);
+  check(s.hits.includes('ho-oh') && s.hits.includes('crypto-ho-oh'), `${tag} Suche "ho-oh" zeigt ${s.hits.join(', ')}`);
+  await page.type('#search', 'qqqq');
+  s = await startState(page);
+  check(s.hits.length === 0 && s.searchCount.startsWith('Kein Raid-Boss'), `${tag} Suche ohne Treffer: "${s.searchCount}"`);
+  await page.click('#search-clear');
+  s = await startState(page);
+  check(s.cardsVisible && !s.searchVisible && !s.clearVisible, `${tag} Suche leeren zeigt nicht wieder die Raid-Arten`);
+
+  // Aus der Suche zum Boss und zurück: Suche bleibt, Fokus auf dem Treffer.
+  await page.type('#search', 'kyogre');
+  await page.click('#search-grid a[data-boss="kyogre-primal"]');
+  let d = await detailState(page);
+  check(d.title === 'Proto-Kyogre' && d.back === '← Startseite', `${tag} Treffer Proto-Kyogre: "${d.title}", Zurück-Link "${d.back}"`);
+  await page.click('#back');
+  await sleep(150);
+  s = await startState(page);
+  const focused = await page.eval(`document.activeElement?.closest('ul')?.id + ':' + document.activeElement?.dataset?.boss`);
+  check(s.visible && s.searchVisible && s.hits.includes('kyogre-primal') && focused === 'search-grid:kyogre-primal',
+    `${tag} Zurück aus der Suche: Suche ${s.searchVisible ? 'da' : 'weg'}, Fokus ${focused}`);
+  await page.click('#search-clear');
 }
 
 // ---------- Raid-Kalender mit fest eingestelltem Datum ----------
@@ -226,12 +289,19 @@ async function testSchedule(page, vp) {
     const [day, time] = when.split('T');
     await page.setToday(day, time);
     await page.goto(url('index.html'));
-    const s = await overviewState(page);
+    const s = await startState(page);
     const expected = slotsAt(when);
     check(JSON.stringify([...s.now].sort()) === JSON.stringify([...expected.now].sort()),
       `${tag} ${when}: "Jetzt im Raid" zeigt ${s.now.join(', ')}, erwartet ${expected.now.join(', ')}`);
     check(JSON.stringify(s.soon.map((x) => x.key).sort()) === JSON.stringify(expected.soon.map((x) => x.key).sort()),
       `${tag} ${when}: "Demnächst" zeigt ${s.soon.map((x) => x.key).join(', ')}, erwartet ${expected.soon.map((x) => x.key).join(', ')}`);
+    check(!expected.soon.length || s.soonCount === `(${expected.soon.length})`, `${tag} ${when}: "Demnächst" zählt ${s.soonCount}`);
+    check(s.scheduleVisible === Boolean(expected.now.length || expected.soon.length), `${tag} ${when}: Kalender-Bereich falsch ein-/ausgeblendet`);
+    // Die Kacheln der Raid-Arten zählen, wie viele ihrer Bosse gerade im Raid sind.
+    for (const c of s.cards) {
+      const n = expected.now.filter((k) => GROUP_OF[DATA.bosses.find((b) => b.key === k).category] === c.id).length;
+      check(c.now === n, `${tag} ${when}: Kachel ${c.id} zeigt ${c.now} statt ${n} "jetzt im Raid"`);
+    }
     // Die Marke nennt genau den Starttag: "Ab 7. Oktober" (mit Jahr nur in einem anderen Jahr).
     const badBadge = s.soon.filter((x) => {
       const start = expected.soon.find((e) => e.key === x.key)?.start;
@@ -241,97 +311,154 @@ async function testSchedule(page, vp) {
     });
     check(badBadge.length === 0, `${tag} ${when}: falsche Datums-Marke bei ${badBadge.map((x) => `${x.key} "${x.badge}"`).join(', ')}`);
   }
+  // "Demnächst" klappt auf, und ein Boss daraus führt mit "← Startseite" zurück.
+  const soonDay = minuteShift(starts.at(-1), -1).split('T');
+  await page.setToday(...soonDay);
+  await page.goto(url('index.html'));
+  const first = (await startState(page)).soon[0]?.key;
+  if (first) {
+    await page.click('#schedule-soon-wrap > summary');
+    check((await startState(page)).soonOpen, `${tag} "Demnächst im Raid" klappt nicht auf`);
+    await page.click(`#schedule-soon a[data-boss="${first}"]`);
+    const d = await detailState(page);
+    check(d.visible && d.back === '← Startseite', `${tag} Boss aus "Demnächst": Zurück-Link "${d.back}"`);
+    await page.click('#back');
+    await sleep(150);
+    const focused = await page.eval(`document.activeElement?.closest('ul')?.id + ':' + document.activeElement?.dataset?.boss`);
+    check(focused === `schedule-soon:${first}`, `${tag} Zurück aus "Demnächst": Fokus ${focused}`);
+  }
   await page.setToday(null);
 }
 
-// ---------- Detailansicht ----------
+// ---------- Boss-Seiten ----------
 
-function checkDetail(s, boss, tag) {
+async function checkDetail(page, s, boss, tag, { infos }) {
   check(s.visible && s.title === boss.name, `${tag} Überschrift "${s.title}"`);
   check(s.title2.startsWith(boss.name), `${tag} Fenstertitel "${s.title2}"`);
+  check(s.tab === 'tab-konter', `${tag} startet nicht mit dem Reiter Konter (${s.tab})`);
   check(num(s.facts['Boss-WP']) === expectedBossCp(boss), `${tag} Boss-WP ${s.facts['Boss-WP']} statt ${expectedBossCp(boss)}`);
-  check(num(s.facts['Boss-KP']) === DATA.tiers[boss.tier].hp, `${tag} Boss-KP ${s.facts['Boss-KP']}`);
-  for (const [i, boosted] of [[0, false], [1, true]]) {
-    const e = expectedCatch(boss, boosted);
-    const row = s.cpRows[i] ?? [];
-    check(row[0] === `${e.min.toLocaleString('de-CH')} – ${e.max.toLocaleString('de-CH')}` && num(row[1]) === e.max,
-      `${tag} Fang-WP ${boosted ? 'mit Wetter' : 'normal'}: "${row.join(' | ')}" statt ${e.min}–${e.max}`);
-  }
-  check(s.rows.length === Math.min(20, s.rows.length) && s.rows.length > 0, `${tag} ${s.rows.length} Konter`);
+  const normal = expectedCatch(boss, false);
+  const boosted = expectedCatch(boss, true);
+  check(num(s.facts['Fang-WP 100 %']) === normal.max, `${tag} Fang-WP 100 % ${s.facts['Fang-WP 100 %']} statt ${normal.max}`);
+  check(num(s.facts['Mit Wetter 100 %']) === boosted.max, `${tag} Mit Wetter 100 % ${s.facts['Mit Wetter 100 %']} statt ${boosted.max}`);
+  check(s.rows.length === 10, `${tag} ${s.rows.length} statt 10 Konter`);
   check(isSortedDesc(s.rows.map((r) => r.score)), `${tag} Konter nicht nach Wertung sortiert`);
+  // Grundeinstellung: ohne Crypto-Pokémon, Mega-Entwicklungen nur in ihrer eigenen Liste.
+  check(s.rows.every((r) => !r.shadow && !r.mega), `${tag} Liste enthält Crypto- oder Mega-Pokémon`);
+  check(s.megas.length > 0 && s.megas.length <= 3 && s.megas.every((r) => r.mega), `${tag} ${s.megas.length} Einträge in "Beste Mega-Entwicklung"`);
   check(s.team.length > 0 && s.team.length <= 6, `${tag} Team mit ${s.team.length} Pokémon`);
   check(s.team.filter((m) => m.mega).length <= 1, `${tag} Team mit mehr als einer Mega-Entwicklung`);
-  check(new Set(s.team.map((m) => m.name.replace(/^Crypto-/, ''))).size === s.team.length, `${tag} Team mit doppelter Art: ${s.team.map((m) => m.name).join(', ')}`);
+  check(s.team.every((m) => !m.name.startsWith('Crypto-')), `${tag} Team mit Crypto-Pokémon, obwohl Crypto aus ist`);
+  check(new Set(s.team.map((m) => m.name)).size === s.team.length, `${tag} Team mit doppelter Art: ${s.team.map((m) => m.name).join(', ')}`);
   // Spielerzahl wie auf der Seite, aber unabhängig gerechnet: bestes Team (Level 40, alles an) bis
   // Level 30 ohne Mega und Crypto; Crypto-Raids nie unter 2 Personen.
-  const opts = { level: 40, elite: true, weather: null, shadow: true, mega: true, legendary: true };
-  const best = RaidCalc.estimateTrainers(DATA, boss, RaidCalc.rank(DATA, boss, opts));
-  const casual = RaidCalc.estimateTrainers(DATA, boss, RaidCalc.rank(DATA, boss, { ...opts, level: 30 })
+  const full = RaidCalc.rank(DATA, boss, RANK_ALL);
+  const best = RaidCalc.estimateTrainers(DATA, boss, full);
+  const casual = RaidCalc.estimateTrainers(DATA, boss, RaidCalc.rank(DATA, boss, { ...RANK_ALL, level: 30 })
     .filter((e) => !e.attacker.shadow && e.attacker.variant === 'normal'));
   const lo = Math.ceil(best.trainers);
   const hi = Math.ceil(casual.trainers);
   const crowd = lo === hi ? (lo <= 1 ? 'allein' : `${lo} Personen`) : `${lo}–${hi} Personen`;
   check(s.facts['Spieler*innen'] === crowd, `${tag} Spieler*innen "${s.facts['Spieler*innen']}" statt "${crowd}"`);
+  // Das Urteil unter dem Team gilt für die aktuelle Einstellung (ohne Crypto).
+  const current = RaidCalc.estimateTrainers(DATA, boss, full.filter((e) => !e.attacker.shadow));
   if (boss.shadow) check(lo >= 2 && !/allein/.test(s.verdict), `${tag} Crypto-Raid mit weniger als 2 Personen: "${s.verdict}"`);
-  else if (best.raw > 1) check(s.verdictStrong.includes(`mindestens ${Math.ceil(best.raw - 1e-9)} Personen`), `${tag} Urteil "${s.verdictStrong}" passt nicht zu ${best.raw.toFixed(2)}`);
-  else check(/allein/.test(s.verdictStrong), `${tag} Urteil "${s.verdictStrong}" sollte "allein" nennen (${best.raw.toFixed(2)})`);
+  else if (current.raw > 1) check(s.verdictStrong.includes(`mindestens ${Math.ceil(current.raw - 1e-9)} Personen`), `${tag} Urteil "${s.verdictStrong}" passt nicht zu ${current.raw.toFixed(2)}`);
+  else check(/allein/.test(s.verdictStrong), `${tag} Urteil "${s.verdictStrong}" sollte "allein" nennen (${current.raw.toFixed(2)})`);
   check(s.randomMoves === 0, `${tag} Konter mit Kraftreserve (Zufallstyp) vorgeschlagen`);
   check(!s.overflow, `${tag} Seite ist breiter als der Bildschirm`);
+
+  if (!infos) return;
+  // Reiter "Boss-Infos": Fang-WP-Tabelle und KP.
+  await page.click('#tab-infos');
+  const i = await detailState(page);
+  check(i.tab === 'tab-infos' && i.rows.length === 0, `${tag} Reiter Boss-Infos öffnet nicht`);
+  check(num(i.bossHp) === DATA.tiers[boss.tier].hp, `${tag} Boss-KP ${i.bossHp} statt ${DATA.tiers[boss.tier].hp}`);
+  for (const [n, e] of [normal, boosted].entries()) {
+    const row = i.cpRows[n] ?? [];
+    check(row[0] === `${e.min.toLocaleString('de-CH')} – ${e.max.toLocaleString('de-CH')}` && num(row[1]) === e.max,
+      `${tag} Fang-WP ${n ? 'mit Wetter' : 'normal'}: "${row.join(' | ')}" statt ${e.min}–${e.max}`);
+  }
+  check(!i.overflow, `${tag} Boss-Infos breiter als der Bildschirm`);
 }
 
 async function testDetails(page, vp) {
   const tag = `[${vp.label} · Bosse]`;
   console.log(`${tag} läuft (jeder ${vp.every}. Boss) …`);
   await page.goto(url('index.html'));
-  const keys = await page.eval(`[...document.querySelectorAll('#boss-grid > li')].map((li) => li.dataset.boss)`);
-  for (const [i, key] of keys.entries()) {
-    if (i % vp.every !== 0) continue;
-    const boss = DATA.bosses.find((b) => b.key === key);
-    await page.click(`#boss-grid a[data-boss="${key}"]`);
-    const s = await detailState(page);
-    checkDetail(s, boss, `${tag} ${key}:`);
-    // Die angezeigten Konter stimmen mit einer unabhängigen Rechnung in Node überein.
-    if (i % (vp.every * 10) === 0) {
-      const expected = RaidCalc.rank(DATA, boss, { level: 40, elite: true, weather: null, shadow: true, mega: true, legendary: true })
-        .slice(0, 5).map((e) => (e.attacker.shadow ? `Crypto-${e.attacker.name}` : e.attacker.name));
-      check(JSON.stringify(s.rows.slice(0, 5).map((r) => r.name)) === JSON.stringify(expected),
-        `${tag} ${key}: Top 5 auf der Seite (${s.rows.slice(0, 5).map((r) => r.name).join(', ')}) ≠ Rechnung (${expected.join(', ')})`);
+  const groups = await page.eval(`[...document.querySelectorAll('#category-grid .category-card')].map((a) => a.dataset.category)`);
+  let n = 0;
+  for (const g of groups) {
+    await page.click(`#category-grid .category-card[data-category="${g}"]`);
+    const keys = (await categoryState(page)).tiles;
+    for (const key of keys) {
+      if (n++ % vp.every !== 0) continue;
+      const boss = DATA.bosses.find((b) => b.key === key);
+      await page.click(`#category-grid-list a[data-boss="${key}"]`);
+      const s = await detailState(page);
+      check(s.back === `← ${GROUP_HEADINGS[g]}`, `${tag} ${key}: Zurück-Link "${s.back}"`);
+      // Auf dem Desktop jeden Boss auch im Reiter Boss-Infos prüfen, sonst jeden dritten.
+      await checkDetail(page, s, boss, `${tag} ${key}:`, { infos: vp.every === 1 || n % 3 === 1 });
+      // Die angezeigten Konter stimmen mit einer unabhängigen Rechnung in Node überein.
+      if (n % (vp.every * 10) === 1) {
+        const full = RaidCalc.rank(DATA, boss, RANK_ALL);
+        const expected = full.filter((e) => !e.attacker.shadow && !isMegaAttacker(e.attacker)).slice(0, 5).map((e) => nameOf(e.attacker));
+        check(JSON.stringify(s.rows.slice(0, 5).map((r) => r.name)) === JSON.stringify(expected),
+          `${tag} ${key}: Top 5 auf der Seite (${s.rows.slice(0, 5).map((r) => r.name).join(', ')}) ≠ Rechnung (${expected.join(', ')})`);
+        const megas = full.filter((e) => isMegaAttacker(e.attacker)).slice(0, 3).map((e) => nameOf(e.attacker));
+        check(JSON.stringify(s.megas.map((r) => r.name)) === JSON.stringify(megas),
+          `${tag} ${key}: Megas auf der Seite (${s.megas.map((r) => r.name).join(', ')}) ≠ Rechnung (${megas.join(', ')})`);
+      }
+      await page.click('#back');
+      await sleep(150);
+      const c = await categoryState(page);
+      check(c.visible && c.title === GROUP_HEADINGS[g], `${tag} ${key}: Zurück führt nicht zur Raid-Art ${g}`);
+      const focused = await page.eval(`document.activeElement?.dataset?.boss`);
+      check(focused === key, `${tag} ${key}: nach Zurück hat ${focused} den Fokus statt der Kachel`);
     }
-    await page.click('#back');
+    await page.click('#category-back');
     await sleep(150);
-    const o = await overviewState(page);
-    check(o.visible, `${tag} ${key}: Zurück führt nicht zur Übersicht`);
-    const focused = await page.eval(`document.activeElement?.dataset?.boss`);
-    check(focused === key, `${tag} ${key}: nach Zurück hat ${focused} den Fokus statt der Kachel`);
   }
+  check(n === DATA.bosses.length, `${tag} über die Raid-Arten erreichbar: ${n} von ${DATA.bosses.length} Bossen`);
 }
 
-// ---------- Filter der Konter ----------
+// ---------- Einstellungen der Konter ----------
 
 async function testFilters(page, vp) {
-  const tag = `[${vp.label} · Filter]`;
+  const tag = `[${vp.label} · Einstellungen]`;
   console.log(`${tag} läuft …`);
   await page.goto(url('index.html', '#boss=xerneas'));
   let s = await detailState(page);
   check(s.visible && s.title === 'Xerneas', `${tag} Direktlink #boss=xerneas öffnet "${s.title}"`);
-  check(s.level === '40' && s.weather === '' && Object.values(s.toggles).every(Boolean) && !s.reset, `${tag} Grundeinstellung falsch`);
+  check(s.level === '40' && s.weather === '' && !s.reset && !s.moreOpen && s.tab === 'tab-konter', `${tag} Grundeinstellung falsch`);
+  check(s.toggles['toggle-shadow'] === false && s.toggles['toggle-legendary'] && s.toggles['toggle-elite'], `${tag} Schalter-Grundeinstellung ${JSON.stringify(s.toggles)}`);
+  check(!s.megaToggle && s.countText.includes('ohne Crypto'), `${tag} Mega-Schalter vorhanden oder Zeile "${s.countText}"`);
+  check(s.cryptoHint?.startsWith('aus'), `${tag} Crypto-Hinweis "${s.cryptoHint}"`);
   const top40 = s.rows[0];
 
-  // Crypto aus: keine Crypto-Pokémon mehr in Liste und Team.
+  // Crypto an: Crypto-Pokémon erscheinen, der Hinweis wechselt, der Fokus bleibt auf dem Schalter.
   await page.click('label.toggle:has(#toggle-shadow)');
   s = await detailState(page);
-  check(!s.toggles['toggle-shadow'] && s.rows.every((r) => !r.shadow) && s.team.every((m) => !m.name.startsWith('Crypto-')) && s.reset,
-    `${tag} Crypto aus: trotzdem Crypto-Pokémon`);
-  // Mega aus
-  await page.click('label.toggle:has(#toggle-mega)');
+  check(s.toggles['toggle-shadow'] && s.rows.some((r) => r.shadow) && s.reset && s.countText.includes('mit Crypto') && s.cryptoHint?.startsWith('an'),
+    `${tag} Crypto an: keine Crypto-Pokémon oder Anzeige falsch ("${s.countText}", "${s.cryptoHint}")`);
+  check(isSortedDesc(s.rows.map((r) => r.score)) && s.rows.every((r) => !r.mega), `${tag} Crypto an: Liste unsortiert oder mit Mega`);
+  check(await page.eval(`document.activeElement?.id === 'toggle-shadow'`), `${tag} Fokus bleibt nicht auf dem Crypto-Schalter`);
+  const expectedShadow = RaidCalc.rank(DATA, DATA.bosses.find((b) => b.key === 'xerneas'), RANK_ALL)
+    .filter((e) => !isMegaAttacker(e.attacker)).slice(0, 5).map((e) => nameOf(e.attacker));
+  check(JSON.stringify(s.rows.slice(0, 5).map((r) => r.name)) === JSON.stringify(expectedShadow), `${tag} Crypto an: Top 5 ${s.rows.slice(0, 5).map((r) => r.name).join(', ')} ≠ ${expectedShadow.join(', ')}`);
+  await page.click('label.toggle:has(#toggle-shadow)');
   s = await detailState(page);
-  check(s.rows.every((r) => !r.mega) && s.team.every((m) => !m.mega), `${tag} Mega aus: trotzdem Mega/Proto`);
-  // Legendäre aus
+  check(!s.toggles['toggle-shadow'] && s.rows.every((r) => !r.shadow) && s.team.every((m) => !m.name.startsWith('Crypto-')) && !s.reset,
+    `${tag} Crypto wieder aus: trotzdem Crypto-Pokémon`);
+
+  // Mehr Einstellungen: Legendäre und Elite aus.
+  await page.click('#more-settings > summary');
+  s = await detailState(page);
+  check(s.moreOpen, `${tag} "Mehr Einstellungen" klappt nicht auf`);
   await page.click('label.toggle:has(#toggle-legendary)');
   s = await detailState(page);
   const legendNames = new Set(DATA.pokemon.filter((p) => p.class).map((p) => p.name));
-  check(s.rows.every((r) => !legendNames.has(r.name)), `${tag} Legendäre aus: trotzdem ${s.rows.filter((r) => legendNames.has(r.name)).map((r) => r.name).join(', ')}`);
-  // Elite aus
+  check(s.moreOpen && s.rows.every((r) => !legendNames.has(r.name)), `${tag} Legendäre aus: trotzdem ${s.rows.filter((r) => legendNames.has(r.name)).map((r) => r.name).join(', ')}`);
   await page.click('label.toggle:has(#toggle-elite)');
   s = await detailState(page);
   check(s.rows.every((r) => !r.elite), `${tag} Elite aus: trotzdem Elite-TM-Attacken`);
@@ -340,7 +467,8 @@ async function testFilters(page, vp) {
   // Zurücksetzen
   await page.click('#reset');
   s = await detailState(page);
-  check(Object.values(s.toggles).every(Boolean) && !s.reset && s.rows[0].name === top40.name, `${tag} Zurücksetzen stellt nicht alles her`);
+  check(!s.toggles['toggle-shadow'] && s.toggles['toggle-legendary'] && s.toggles['toggle-elite'] && !s.reset && s.rows[0].name === top40.name,
+    `${tag} Zurücksetzen stellt nicht alles her`);
 
   // Level 50: mehr DPS für denselben Spitzenreiter; Level 30: weniger.
   await page.click('input[name=level][value="50"]');
@@ -354,7 +482,7 @@ async function testFilters(page, vp) {
   check(!at30 || at30.dps < top40.dps, `${tag} Level 30: DPS sinkt nicht`);
   await page.click('input[name=level][value="40"]');
 
-  // Wetter: Bedeckt stärkt Gift (sehr effektiv gegen Xerneas) – Gift-Konter steigen.
+  // Wetter: Bedeckt stärkt Gift (sehr effektiv gegen Xerneas).
   await page.eval(`(() => { const s = document.getElementById('weather'); s.value = 'OVERCAST'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   s = await detailState(page);
   check(s.weather === 'OVERCAST' && s.countText.includes('Bedeckt'), `${tag} Wetter Bedeckt nicht übernommen ("${s.countText}")`);
@@ -372,35 +500,79 @@ async function testFilters(page, vp) {
   s = await detailState(page);
   check(s.pressed.includes('bossFast:'), `${tag} "Alle" lässt sich nicht wieder wählen`);
 
-  // Mehr anzeigen
+  // Weitere anzeigen: je 10 mehr, höchstens 50.
   check(s.more, `${tag} Knopf "Weitere anzeigen" fehlt`);
   await page.click('#more');
   s = await detailState(page);
-  check(s.rows.length === 40 && isSortedDesc(s.rows.map((r) => r.score)), `${tag} nach "Weitere" ${s.rows.length} statt 40 Zeilen`);
-  check(await page.eval(`document.activeElement === document.querySelector('#counter-list > li:nth-child(21)')`),
+  check(s.rows.length === 20 && isSortedDesc(s.rows.map((r) => r.score)), `${tag} nach "Weitere" ${s.rows.length} statt 20 Zeilen`);
+  check(await page.eval(`document.activeElement === document.querySelector('#counter-list > li:nth-child(11)')`),
     `${tag} nach "Weitere" steht der Fokus nicht auf der ersten neuen Zeile`);
-  check(s.byType > 0, `${tag} "Die Besten je Typ" fehlt`);
+  for (let i = 0; i < 10 && s.more; i++) {
+    await page.click('#more');
+    s = await detailState(page);
+  }
+  check(s.rows.length === 50 && !s.more, `${tag} Liste endet bei ${s.rows.length} statt 50 Zeilen`);
 
-  // Boss wechseln per Adresse: Filter bleiben, Boss-Attacken nicht.
-  await page.click('label.toggle:has(#toggle-mega)');
+  // Die Besten je Typ: aufklappbar.
+  check(s.byType > 0, `${tag} "Die Besten je Typ" fehlt`);
+  await page.click('#by-type > summary');
+  check(await page.eval(`document.getElementById('by-type').open && document.querySelector('.type-card').getClientRects().length > 0`), `${tag} "Die Besten je Typ" klappt nicht auf`);
+
+  // Reiter per Tastatur: Pfeiltasten wechseln, der Fokus folgt.
+  await page.click('#tab-infos');
+  s = await detailState(page);
+  check(s.tab === 'tab-infos' && s.cpRows.length === 2 && !s.rows.length, `${tag} Reiter Boss-Infos zeigt ${s.cpRows.length} Fang-Zeilen`);
+  await page.key('ArrowLeft');
+  s = await detailState(page);
+  check(s.tab === 'tab-konter' && s.rows.length > 0 && (await page.eval(`document.activeElement?.id`)) === 'tab-konter', `${tag} Pfeil links wechselt nicht zu Konter`);
+  await page.key('End');
+  s = await detailState(page);
+  check(s.tab === 'tab-infos', `${tag} Ende wechselt nicht zu Boss-Infos`);
+  await page.click('#tab-konter');
+
+  // Boss wechseln per Adresse: Einstellungen bleiben, Boss-Attacken nicht, Reiter Konter.
+  await page.click('label.toggle:has(#toggle-shadow)');
+  await page.click('#tab-infos');
   await page.eval(`location.hash = 'boss=mewtwo'`);
   await sleep(300);
   s = await detailState(page);
-  check(s.title === 'Mewtu' && s.toggles['toggle-mega'] === false && s.pressed.every((p) => p.endsWith(':')), `${tag} Wechsel zu Mewtu: Titel "${s.title}" oder Filter falsch`);
+  check(s.title === 'Mewtu' && s.toggles['toggle-shadow'] === true && s.pressed.every((p) => p.endsWith(':')) && s.tab === 'tab-konter',
+    `${tag} Wechsel zu Mewtu: Titel "${s.title}", Einstellungen oder Reiter falsch`);
 
-  // Ungültiger Boss in der Adresse: Übersicht.
-  await page.goto(url('index.html', '#boss=gibtsnicht'));
-  const o = await overviewState(page);
-  check(o.visible, `${tag} #boss=gibtsnicht zeigt nicht die Übersicht`);
+  // Ungültige Adressen: Startseite.
+  for (const hash of ['#boss=gibtsnicht', '#kategorie=gibtsnicht']) {
+    await page.goto(url('index.html', hash));
+    check((await startState(page)).visible, `${tag} ${hash} zeigt nicht die Startseite`);
+  }
+  // Direktlink zu einer Raid-Art.
+  await page.goto(url('index.html', '#kategorie=mega'));
+  const c = await categoryState(page);
+  check(c.visible && c.title === 'Mega-Raid-Bosse' && c.tiles.length === bossesOf('mega').length, `${tag} #kategorie=mega öffnet "${c.title}"`);
 
-  // Browser-Zurück aus der Detailansicht
+  // Direktlink zum Boss, dann die Zurück-Links: Boss -> Raid-Art -> Startseite.
+  await page.goto(url('index.html', '#boss=xerneas'));
+  await page.click('#back');
+  await sleep(150);
+  check((await categoryState(page)).title === 'Legendäre Raid-Bosse', `${tag} Zurück vom Direktlink führt nicht zu Legendär`);
+  await page.click('#category-back');
+  await sleep(150);
+  check((await startState(page)).visible, `${tag} "Alle Raid-Arten" führt nicht zur Startseite`);
+
+  // Browser-Zurück: Boss -> Raid-Art -> Startseite.
   await page.goto(url('index.html'));
-  await page.click('#boss-grid a[data-boss="kyogre-primal"]');
+  await page.click('#category-grid .category-card[data-category="primal"]');
+  await page.click('#category-grid-list a[data-boss="kyogre-primal"]');
   s = await detailState(page);
-  check(s.title === 'Proto-Kyogre', `${tag} Kachel Proto-Kyogre öffnet "${s.title}"`);
+  check(s.title === 'Proto-Kyogre' && s.back === '← Proto-Raid-Bosse', `${tag} Kachel Proto-Kyogre öffnet "${s.title}" (Zurück-Link "${s.back}")`);
   await page.eval('history.back()');
   await sleep(400);
-  check((await overviewState(page)).visible, `${tag} Browser-Zurück führt nicht zur Übersicht`);
+  check((await categoryState(page)).title === 'Proto-Raid-Bosse', `${tag} Browser-Zurück führt nicht zur Raid-Art`);
+  await page.eval('history.back()');
+  await sleep(400);
+  check((await startState(page)).visible, `${tag} zweites Browser-Zurück führt nicht zur Startseite`);
+  await page.eval('history.forward()');
+  await sleep(400);
+  check((await categoryState(page)).title === 'Proto-Raid-Bosse', `${tag} Browser-Vor führt nicht zur Raid-Art`);
 }
 
 async function testLegal(page, vp) {
@@ -450,7 +622,7 @@ testCalc();
 for (const vp of VIEWPORTS) {
   const page = await launchBrowser(vp);
   try {
-    await testOverview(page, vp);
+    await testStart(page, vp);
     await testSchedule(page, vp);
     await testDetails(page, vp);
     await testFilters(page, vp);

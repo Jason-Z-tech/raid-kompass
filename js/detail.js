@@ -1,17 +1,22 @@
 'use strict';
 
-// Detailansicht eines Raid-Bosses: Boss-Infos (WP, Fang-WP, Wetter, Schwächen, Attacken),
-// Filter für die Konter, bestes Team mit geschätzter Spielerzahl und die Rangliste.
+// Boss-Seite: oben kompakt das Wichtigste (Boss-WP, 100-%-Fang-WP, Wetter, Schwächen, Spielerzahl),
+// darunter zwei Reiter – "Konter" (bestes Team, Top-Konter, beste Mega-Entwicklung) und "Boss-Infos".
 
 const Detail = (() => {
   const { el, data, formatNumber, formatFactor } = Raid;
 
-  const LIST_STEP = 20;
-  const LIST_MAX = 60;
-  const DEFAULTS = { level: data?.rules.defaultLevel ?? 40, shadow: true, mega: true, legendary: true, elite: true, weather: '' };
+  const LIST_STEP = 10;
+  const LIST_MAX = 50;
+  // Crypto-Pokémon sind standardmäßig aus: Sie sind selten und stünden sonst fast immer ganz oben.
+  const DEFAULTS = { level: data?.rules.defaultLevel ?? 40, shadow: false, legendary: true, elite: true, weather: '' };
+  const TABS = [
+    { id: 'konter', label: 'Konter' },
+    { id: 'infos', label: 'Boss-Infos' },
+  ];
 
-  // Filter bleiben beim Wechsel zu einem anderen Boss erhalten, die Boss-Attacken nicht.
-  const state = { ...DEFAULTS, bossFast: '', bossCharged: '', listSize: LIST_STEP };
+  // Einstellungen bleiben beim Wechsel zu einem anderen Boss erhalten, die Boss-Attacken nicht.
+  const state = { ...DEFAULTS, bossFast: '', bossCharged: '', listSize: LIST_STEP, tab: 'konter', moreOpen: false };
   let boss = null;
   let container = null;
   const cache = new Map();
@@ -19,7 +24,7 @@ const Detail = (() => {
   // ---------- Rechnung ----------
 
   // Die volle Rangliste (alle Varianten) hängt nur von Level, Elite, Wetter und Boss-Attacken ab –
-  // die Schalter für Crypto, Mega und Legendäre filtern sie nur. So bleibt jeder Klick schnell.
+  // die Schalter für Crypto und Legendäre filtern sie nur. So bleibt jeder Klick schnell.
   function fullRanking(opts = state) {
     const key = [boss.key, opts.level, opts.elite, opts.weather, opts.bossFast, opts.bossCharged].join('|');
     if (!cache.has(key)) {
@@ -33,17 +38,20 @@ const Detail = (() => {
     return cache.get(key);
   }
 
-  const passes = (entry, opts) => (opts.shadow || !entry.attacker.shadow)
-    && (opts.mega || entry.attacker.variant === 'normal')
-    && (opts.legendary || !entry.attacker.class);
+  const isMega = (attacker) => attacker.variant === 'mega' || attacker.variant === 'primal';
+  const passes = (entry, opts) => (opts.shadow || !entry.attacker.shadow) && (opts.legendary || !entry.attacker.class);
 
+  // Alle Pokémon, die die Schalter durchlassen – mit Mega-Entwicklungen (für das Team).
   const ranking = (opts = state) => fullRanking(opts).filter((e) => passes(e, opts));
 
-  // Spielerzahl: bestes Team mit den Einstellungen – und zum Vergleich mit Level-30-Pokémon ohne Mega/Crypto.
+  // Spielerzahl: von den besten Kontern (Level 40, mit Crypto und Mega) bis zu Level-30-Pokémon ohne beides.
   function trainerRange() {
-    const best = { ...DEFAULTS, level: 40, bossFast: '', bossCharged: '' };
-    const casual = { ...best, level: 30, shadow: false, mega: false };
-    return [best, casual].map((opts) => RaidCalc.estimateTrainers(data, boss, ranking(opts)).trainers);
+    const best = { ...DEFAULTS, shadow: true, level: 40, bossFast: '', bossCharged: '' };
+    const casual = { ...best, level: 30, shadow: false };
+    return [
+      RaidCalc.estimateTrainers(data, boss, ranking(best)).trainers,
+      RaidCalc.estimateTrainers(data, boss, ranking(casual).filter((e) => !isMega(e.attacker))).trainers,
+    ];
   }
 
   // ---------- Bausteine ----------
@@ -65,16 +73,34 @@ const Detail = (() => {
       el('span', { class: `type-chip type-chip--small type-${Raid.slugOf(type)}` }, [`${data.types[type]} ${formatFactor(factor)}`])));
   }
 
+  function factors(pokemon) {
+    const all = Raid.TYPE_ORDER.map((type) => ({ type, factor: RaidCalc.effectiveness(data, type, pokemon.types) }));
+    return {
+      weak: all.filter((f) => f.factor > 1).sort((a, b) => b.factor - a.factor),
+      strong: all.filter((f) => f.factor < 1).sort((a, b) => a.factor - b.factor),
+    };
+  }
+
   // Rechnerische Spielerzahl auf eine Nachkommastelle, immer aufgerundet: "2,04" wird "2,1", nie "2,0".
   const exactPeople = (n) => formatNumber(Math.ceil(n * 10 - 1e-9) / 10, 1);
 
-  // ---------- Boss ----------
-
-  function bossPanel(pokemon, bossStat) {
-    const { state: when, slot } = Raid.scheduleState(boss);
+  function crowdText() {
     const [lo, hi] = trainerRange().map((n) => (Number.isFinite(n) ? Math.ceil(n) : null));
+    if (!lo) return 'unbekannt';
+    if (lo === hi) return lo <= 1 ? 'allein' : `${lo} Personen`;
+    return `${lo}–${hi ?? '?'} Personen`;
+  }
+
+  // ---------- Kopf: das Wichtigste auf einen Blick ----------
+
+  function bossPanel(pokemon) {
+    const { state: when, slot } = Raid.scheduleState(boss);
+    const bossStat = RaidCalc.bossStats(data, boss);
+    const range = RaidCalc.catchRange(data, boss);
+    const caught = Raid.pokemon(boss.catchPokemon);
+    const weathers = data.weather.filter((w) => caught.types.some((t) => w.types.includes(t))).map((w) => w.name).join(', ');
     const tier = data.tiers[boss.tier];
-    const crowd = !lo ? 'unbekannt' : lo === hi ? (lo <= 1 ? 'allein' : `${lo} Personen`) : `${lo}–${hi ?? '?'} Personen`;
+    const fact = (label, value, title = null) => el('div', { title }, [el('dt', { text: label }), el('dd', { text: value })]);
     return el('section', { class: `boss boss--${boss.category}`, 'aria-labelledby': 'detail-title' }, [
       Raid.pokemonArt(pokemon, { size: 'lg', eager: true, shadow: boss.shadow }),
       el('div', { class: 'boss__info' }, [
@@ -87,32 +113,18 @@ const Detail = (() => {
           boss.schedule.some((s) => s.shiny) ? el('span', { class: 'badge badge--shiny', text: 'Schillernd möglich' }) : null,
         ]),
         el('dl', { class: 'facts facts--boss' }, [
-          el('div', {}, [el('dt', { text: 'Boss-WP' }), el('dd', { text: formatNumber(bossStat.cp) })]),
-          el('div', {}, [el('dt', { text: 'Boss-KP' }), el('dd', { text: formatNumber(bossStat.hp) })]),
-          el('div', {}, [el('dt', { text: 'Zeitlimit' }), el('dd', { text: `${tier.timerS / 60} Minuten` })]),
-          el('div', { title: 'Mit den besten Kontern auf Level 40 bis zu Level-30-Pokémon ohne Mega und Crypto' }, [
-            el('dt', { text: 'Spieler*innen' }), el('dd', { text: crowd }),
-          ]),
+          fact('Boss-WP', formatNumber(bossStat.cp)),
+          fact('Fang-WP 100 %', formatNumber(range.normal.max), `Level ${range.normal.level}, Werte 15/15/15`),
+          fact('Mit Wetter 100 %', formatNumber(range.boosted.max), `Level ${range.boosted.level}${weathers ? `, Wetterboost bei ${weathers}` : ''}`),
+          fact('Spieler*innen', crowdText(), 'Mit den besten Kontern auf Level 40 bis zu Level-30-Pokémon ohne Mega und Crypto'),
         ]),
-        ...bossNotes(),
+        el('p', { class: 'boss__weak' }, [el('span', { class: 'boss__weak-label', text: 'Schwach gegen' }), factorList(factors(pokemon).weak)]),
+        boss.shadow ? el('p', { class: 'boss__note boss__note--shadow', text: 'Crypto-Raid: Der Boss macht und nimmt 20 % mehr Schaden (schon eingerechnet). Ab 60 % KP wird er rasend – mit 8 Erlösten Edelsteinen (höchstens 5 pro Person) bändigt ihr ihn wieder. Deshalb braucht ihr mindestens 2 Personen.' }) : null,
       ]),
     ]);
   }
 
-  // Hinweise zur Raid-Art: Crypto (Wut, Erlöste Edelsteine), Super-Mega-Raid (Schilde), Mega-Bonus.
-  function bossNotes() {
-    const notes = [];
-    if (boss.shadow) {
-      notes.push(['boss__note boss__note--shadow', 'Crypto-Raid: Der Boss macht und nimmt 20 % mehr Schaden (schon eingerechnet). Ab 60 % KP wird er rasend und viel stärker – mit 8 Erlösten Edelsteinen (höchstens 5 pro Person) bändigt ihr ihn wieder. Deshalb braucht ihr mindestens 2 Personen.']);
-    }
-    if (boss.superMega) {
-      notes.push(['boss__note boss__note--mega', 'Kam auch als Super-Mega-Raid: Dort baut der Boss Schilde auf, die nur Mega-Pokémon mit einer Lade-Attacke brechen – jede Person höchstens einen. Dafür braucht ihr 7 bis 10 Personen, alle mit einem Mega-Pokémon im Team.']);
-    }
-    if (boss.category === 'mega' || boss.category === 'megaLegendary' || boss.category === 'primal') {
-      notes.push(['boss__note', 'Tipp: Bringt selbst Mega-Entwicklungen mit. Eine aktive Mega-Entwicklung verstärkt die Attacken aller anderen im Raid um 10 %, Attacken ihres Typs um 30 % – ihre eigenen aber nicht. Dieser Bonus ist in der Rangliste nicht eingerechnet.']);
-    }
-    return notes.map(([cls, text]) => el('p', { class: cls, text }));
-  }
+  // ---------- Reiter "Boss-Infos" ----------
 
   // Zusatz, wenn man nach dem Raid nicht genau den Boss fängt (Mega, Proto, Fusion, Krone).
   function catchSuffix(caught) {
@@ -154,9 +166,7 @@ const Detail = (() => {
   }
 
   function typeCard(pokemon) {
-    const factors = Raid.TYPE_ORDER.map((type) => ({ type, factor: RaidCalc.effectiveness(data, type, pokemon.types) }));
-    const weak = factors.filter((f) => f.factor > 1).sort((a, b) => b.factor - a.factor);
-    const strong = factors.filter((f) => f.factor < 1).sort((a, b) => a.factor - b.factor);
+    const { weak, strong } = factors(pokemon);
     return el('article', { class: 'info-card' }, [
       el('h3', { text: 'Schwach gegen' }), factorList(weak),
       el('h3', { text: 'Resistent gegen' }), factorList(strong),
@@ -165,6 +175,7 @@ const Detail = (() => {
 
   function statCard(pokemon) {
     const max = { atk: 414, def: 396, sta: 496 };
+    const tier = data.tiers[boss.tier];
     const stat = (label, value, top) => el('div', { class: 'stat' }, [
       el('span', { class: 'stat__label', text: label }),
       el('span', { class: 'stat__track' }, [el('span', { class: 'stat__fill', style: { '--fill': `${Math.min(100, Math.round((value / top) * 100))}%` } })]),
@@ -175,27 +186,51 @@ const Detail = (() => {
       stat('Angriff', pokemon.base.atk, max.atk),
       stat('Verteidigung', pokemon.base.def, max.def),
       stat('Ausdauer', pokemon.base.sta, max.sta),
-      boss.shadow ? el('p', { class: 'info-card__line', text: 'Als Crypto-Boss macht und nimmt er 20 % mehr Schaden.' }) : null,
+      el('p', { class: 'info-card__line' }, [
+        `Als Raid-Boss: ${formatNumber(tier.hp)} KP, ${tier.timerS / 60} Minuten Zeit.`,
+        boss.shadow ? ' Als Crypto-Boss macht und nimmt er 20 % mehr Schaden.' : '',
+      ]),
     ]);
   }
 
-  // Attacken des Bosses: anklicken, um nur dieses Paar zu rechnen (sonst Durchschnitt aller Paare).
   function movesCard() {
-    const group = (kind, label, ids) => el('div', { class: 'boss-moves__group', role: 'group', 'aria-label': label }, [
+    const list = (label, ids) => [
       el('h4', { text: label }),
-      el('div', { class: 'boss-moves__options' }, [
-        moveButton(kind, '', el('span', { class: 'move__name', text: 'Alle' })),
-        ...ids.map((id) => {
-          const m = moveOf(id);
-          return moveButton(kind, id, [el('span', { class: 'move__name', text: m.name }), Raid.typeChip(m.type, true)]);
-        }),
-      ]),
-    ]);
-    return el('article', { class: 'info-card info-card--moves' }, [
+      el('div', { class: 'factor-list' }, ids.map((id) => moveChip(moveOf(id)))),
+    ];
+    return el('article', { class: 'info-card' }, [
       el('h3', { text: 'Attacken des Bosses' }),
-      el('p', { class: 'info-card__line', text: 'Kennst du die Attacken? Wähle sie aus – die Konter passen sich an.' }),
-      group('bossFast', 'Sofort-Attacke', boss.fast),
-      group('bossCharged', 'Lade-Attacke', boss.charged),
+      ...list('Sofort-Attacken', boss.fast),
+      ...list('Lade-Attacken', boss.charged),
+      el('p', { class: 'info-card__line', text: 'Kennst du seine Attacken? Unter „Konter“ → „Mehr Einstellungen“ kannst du sie auswählen.' }),
+    ]);
+  }
+
+  function infoNotes() {
+    const notes = [];
+    if (boss.superMega) {
+      notes.push(['boss__note boss__note--mega', 'Kam auch als Super-Mega-Raid: Dort baut der Boss Schilde auf, die nur Mega-Pokémon mit einer Lade-Attacke brechen – jede Person höchstens einen. Dafür braucht ihr 7 bis 10 Personen, alle mit einem Mega-Pokémon im Team.']);
+    }
+    return notes.map(([cls, text]) => el('p', { class: cls, text }));
+  }
+
+  function infosPanel(pokemon) {
+    return [
+      ...infoNotes(),
+      el('div', { class: 'info-grid' }, [catchCard(), typeCard(pokemon), statCard(pokemon), movesCard()]),
+    ];
+  }
+
+  // ---------- Reiter "Konter": Einstellungen ----------
+
+  function toggle(key, label, hint = null) {
+    return el('label', { class: 'toggle' }, [
+      el('input', {
+        type: 'checkbox', id: `toggle-${key}`, checked: state[key], autocomplete: 'off',
+        onchange: (e) => { state[key] = e.target.checked; state.listSize = LIST_STEP; renderPanel(); focusControl(`#toggle-${key}`); },
+      }),
+      el('span', { class: 'toggle__track', 'aria-hidden': 'true' }),
+      el('span', { class: 'toggle__text' }, [label, hint ? el('small', { text: hint }) : null]),
     ]);
   }
 
@@ -208,13 +243,24 @@ const Detail = (() => {
       onclick: () => {
         state[kind] = id;
         state.listSize = LIST_STEP;
-        renderCounters();
-        container.querySelector(`.move-btn[data-kind="${kind}"][data-move="${id}"]`)?.focus();
+        renderPanel();
+        focusControl(`.move-btn[data-kind="${kind}"][data-move="${id}"]`);
       },
     }, content);
   }
 
-  // ---------- Konter ----------
+  function bossMoveChoice(kind, label, ids) {
+    return el('div', { class: 'boss-moves__group', role: 'group', 'aria-label': `${label} des Bosses` }, [
+      el('span', { class: 'control-label', text: `${label} des Bosses` }),
+      el('div', { class: 'boss-moves__options' }, [
+        moveButton(kind, '', el('span', { class: 'move__name', text: 'Alle' })),
+        ...ids.map((id) => {
+          const m = moveOf(id);
+          return moveButton(kind, id, [el('span', { class: 'move__name', text: m.name }), Raid.typeChip(m.type, true)]);
+        }),
+      ]),
+    ]);
+  }
 
   function controls() {
     const level = el('fieldset', { class: 'segmented', id: 'level-filter' }, [
@@ -222,7 +268,7 @@ const Detail = (() => {
       el('div', { class: 'segmented__options' }, data.rules.levels.map((lv) => el('label', {}, [
         el('input', {
           type: 'radio', name: 'level', value: String(lv), checked: state.level === lv, autocomplete: 'off',
-          onchange: () => { state.level = lv; state.listSize = LIST_STEP; renderCounters(); focusControl(`input[name=level][value="${lv}"]`); },
+          onchange: () => { state.level = lv; state.listSize = LIST_STEP; renderPanel(); focusControl(`input[name=level][value="${lv}"]`); },
         }),
         el('span', { text: `Level ${lv}` }),
       ]))),
@@ -231,7 +277,7 @@ const Detail = (() => {
       el('span', { class: 'control-label', text: 'Wetter' }),
       el('select', {
         id: 'weather', autocomplete: 'off',
-        onchange: (e) => { state.weather = e.target.value; state.listSize = LIST_STEP; renderCounters(); focusControl('#weather'); },
+        onchange: (e) => { state.weather = e.target.value; state.listSize = LIST_STEP; renderPanel(); focusControl('#weather'); },
       }, [
         el('option', { value: '', text: 'Ohne Wetterboost', selected: !state.weather }),
         ...data.weather.map((w) => el('option', {
@@ -240,28 +286,34 @@ const Detail = (() => {
         })),
       ]),
     ]);
-    const toggle = (key, label) => el('label', { class: 'toggle' }, [
-      el('input', {
-        type: 'checkbox', id: `toggle-${key}`, checked: state[key], autocomplete: 'off',
-        onchange: (e) => { state[key] = e.target.checked; state.listSize = LIST_STEP; renderCounters(); focusControl(`#toggle-${key}`); },
-      }),
-      el('span', { class: 'toggle__track', 'aria-hidden': 'true' }),
-      el('span', { text: label }),
-    ]);
-    const changed = ['level', 'shadow', 'mega', 'legendary', 'elite', 'weather'].some((k) => state[k] !== DEFAULTS[k])
+    const changed = ['level', 'shadow', 'legendary', 'elite', 'weather'].some((k) => state[k] !== DEFAULTS[k])
       || state.bossFast || state.bossCharged;
+    const more = el('details', {
+      class: 'more-settings', id: 'more-settings', open: state.moreOpen,
+      ontoggle: (e) => { state.moreOpen = e.target.open; },
+    }, [
+      el('summary', { text: 'Mehr Einstellungen' }),
+      el('div', { class: 'more-settings__body' }, [
+        weather,
+        el('div', { class: 'counter-controls__toggles' }, [
+          toggle('legendary', 'Legendäre, Mysteriöse & Ultrabestien'),
+          toggle('elite', 'Elite-Attacken', 'nur mit Elite-TM oder von Events'),
+        ]),
+        bossMoveChoice('bossFast', 'Sofort-Attacke', boss.fast),
+        bossMoveChoice('bossCharged', 'Lade-Attacke', boss.charged),
+      ]),
+    ]);
     return el('form', { class: 'counter-controls', id: 'counter-controls', autocomplete: 'off', onsubmit: (e) => e.preventDefault() }, [
       level,
-      weather,
-      el('div', { class: 'counter-controls__toggles' }, [
-        toggle('shadow', 'Crypto-Pokémon'),
-        toggle('mega', 'Mega & Proto'),
-        toggle('legendary', 'Legendäre, Mysteriöse & Ultrabestien'),
-        toggle('elite', 'Elite-Attacken'),
-      ]),
+      el('div', { class: 'crypto-switch' }, [toggle('shadow', 'Crypto-Pokémon', state.shadow ? 'an – Crypto-Pokémon zählen mit' : 'aus – nur normale Pokémon')]),
+      more,
       changed ? el('button', {
         type: 'button', class: 'reset-btn', id: 'reset',
-        onclick: () => { Object.assign(state, DEFAULTS, { bossFast: '', bossCharged: '', listSize: LIST_STEP }); renderCounters(); focusControl('input[name=level]:checked'); },
+        onclick: () => {
+          Object.assign(state, DEFAULTS, { bossFast: '', bossCharged: '', listSize: LIST_STEP });
+          renderPanel();
+          focusControl('input[name=level]:checked');
+        },
       }, ['Zurücksetzen']) : null,
     ]);
   }
@@ -269,6 +321,8 @@ const Detail = (() => {
   function focusControl(selector) {
     container.querySelector(selector)?.focus({ preventScroll: true });
   }
+
+  // ---------- Reiter "Konter": Listen ----------
 
   function movesLine(entry) {
     const a = entry.attacker;
@@ -283,7 +337,7 @@ const Detail = (() => {
     const est = RaidCalc.estimateTrainers(data, boss, list);
     const tier = data.tiers[boss.tier];
     let verdict;
-    if (!Number.isFinite(est.raw)) verdict = 'Mit diesen Filtern lässt sich keine Spielerzahl schätzen.';
+    if (!Number.isFinite(est.raw)) verdict = 'Mit diesen Einstellungen lässt sich keine Spielerzahl schätzen.';
     else if (est.raw <= est.minTrainers && est.minTrainers > 1) {
       verdict = `Rechnerisch reicht ${est.raw <= 1 ? 'schon der Schaden einer Person' : `der Schaden von ${exactPeople(est.raw)} Personen`} – im Crypto-Raid braucht ihr trotzdem mindestens ${est.minTrainers} Personen für die Erlösten Edelsteine.`;
     } else if (est.raw <= 1) {
@@ -293,8 +347,8 @@ const Detail = (() => {
     }
     return el('section', { class: 'team', 'aria-labelledby': 'team-title' }, [
       el('div', { class: 'section-head' }, [
-        el('h2', { class: 'section-title', id: 'team-title', text: 'Bestes Team' }),
-        el('p', { text: 'Sechs Pokémon für eine Person – verschiedene Arten, höchstens eine Mega-Entwicklung.' }),
+        el('h3', { class: 'section-title section-title--small', id: 'team-title', text: 'Bestes Team' }),
+        el('p', { text: 'Sechs verschiedene Pokémon für eine Person, höchstens eine Mega-Entwicklung.' }),
       ]),
       el('ol', { class: 'team__members', id: 'team-members' }, est.team.map((entry) => el('li', { class: 'member' }, [
         Raid.pokemonArt(entry.attacker, { size: 'sm', shadow: entry.attacker.shadow }),
@@ -310,59 +364,73 @@ const Detail = (() => {
     ]);
   }
 
+  function counterRow(entry, i, top, { compact = false } = {}) {
+    const a = entry.attacker;
+    // tabindex -1: Nach "Weitere anzeigen" springt der Fokus auf die erste neue Zeile.
+    return el('li', { class: `row${!compact && i < 3 ? ` row--top row--top-${i + 1}` : ''}`, tabindex: '-1', style: { '--i': String(Math.min(i, 12)) } }, [
+      el('span', { class: 'row__rank', text: String(i + 1) }),
+      Raid.pokemonArt(a, { size: 'sm', shadow: a.shadow }),
+      el('div', { class: 'row__info' }, [
+        el('p', { class: 'row__name' }, [el('span', { text: Raid.attackerName(a) }), ...Raid.attackerBadges(a)]),
+        movesLine(entry),
+      ]),
+      el('div', { class: 'row__metric' }, [
+        Raid.meter('Wertung', `${formatNumber((entry.score / top) * 100)} %`, entry.score / top, 'score'),
+        el('p', { class: 'row__numbers' }, [
+          el('span', { title: 'Schaden pro Sekunde' }, ['DPS ', el('strong', { text: formatNumber(entry.dps, 1) })]),
+          el('span', { title: 'Gesamtschaden, bis das Pokémon besiegt ist' }, ['TDO ', el('strong', { text: formatNumber(entry.tdo) })]),
+        ]),
+      ]),
+    ]);
+  }
+
   function rankingSection(list) {
     const shown = list.slice(0, state.listSize);
     const top = list[0]?.score ?? 1;
     const more = Math.min(LIST_MAX, list.length) > state.listSize;
+    const weatherName = state.weather ? data.weather.find((w) => w.id === state.weather).name : 'ohne Wetter';
     return el('section', { class: 'counters', 'aria-labelledby': 'counters-title' }, [
       el('div', { class: 'section-head' }, [
-        el('h2', { class: 'section-title', id: 'counters-title', text: 'Top-Konter' }),
-        el('p', { id: 'counters-count', text: `${formatNumber(list.length)} Pokémon gerechnet · Level ${state.level} · ${state.weather ? data.weather.find((w) => w.id === state.weather).name : 'ohne Wetter'}` }),
+        el('h3', { class: 'section-title section-title--small', id: 'counters-title', text: 'Top-Konter' }),
+        el('p', { id: 'counters-count', text: `Level ${state.level} · ${weatherName} · ${state.shadow ? 'mit' : 'ohne'} Crypto-Pokémon` }),
       ]),
-      list.length ? el('ol', { class: 'rows', id: 'counter-list' }, shown.map((entry, i) => {
-        const a = entry.attacker;
-        // tabindex -1: Nach "Weitere anzeigen" springt der Fokus auf die erste neue Zeile.
-        return el('li', { class: `row${i < 3 ? ` row--top row--top-${i + 1}` : ''}`, tabindex: '-1', style: { '--i': String(Math.min(i, 12)) } }, [
-          el('span', { class: 'row__rank', text: String(i + 1) }),
-          Raid.pokemonArt(a, { size: 'sm', shadow: a.shadow }),
-          el('div', { class: 'row__info' }, [
-            el('p', { class: 'row__name' }, [el('span', { text: Raid.attackerName(a) }), ...Raid.attackerBadges(a)]),
-            movesLine(entry),
-          ]),
-          el('div', { class: 'row__metric' }, [
-            Raid.meter('Wertung', `${formatNumber((entry.score / top) * 100)} %`, entry.score / top, 'score'),
-            el('p', { class: 'row__numbers' }, [
-              el('span', { title: 'Schaden pro Sekunde' }, ['DPS ', el('strong', { text: formatNumber(entry.dps, 1) })]),
-              el('span', { title: 'Gesamtschaden, bis das Pokémon besiegt ist' }, ['TDO ', el('strong', { text: formatNumber(entry.tdo) })]),
-            ]),
-          ]),
-        ]);
-      })) : el('p', { class: 'state', text: 'Mit diesen Filtern bleibt kein Pokémon übrig.' }),
+      list.length ? el('ol', { class: 'rows', id: 'counter-list' }, shown.map((entry, i) => counterRow(entry, i, top)))
+        : el('p', { class: 'state', text: 'Mit diesen Einstellungen bleibt kein Pokémon übrig.' }),
       more ? el('button', {
         type: 'button', class: 'more-btn', id: 'more',
-        onclick: () => { state.listSize = Math.min(LIST_MAX, state.listSize + LIST_STEP); renderCounters(); focusControl(`#counter-list > li:nth-child(${state.listSize - LIST_STEP + 1})`); },
+        onclick: () => {
+          state.listSize = Math.min(LIST_MAX, state.listSize + LIST_STEP);
+          renderPanel();
+          focusControl(`#counter-list > li:nth-child(${state.listSize - LIST_STEP + 1})`);
+        },
       }, [`Weitere ${Math.min(LIST_STEP, Math.min(LIST_MAX, list.length) - state.listSize)} anzeigen`]) : null,
+    ]);
+  }
+
+  // Mega-Entwicklungen getrennt: Pro Person ist im Raid nur eine aktiv.
+  function megaSection(megas) {
+    if (!megas.length) return null;
+    const top = megas[0].score;
+    return el('section', { class: 'megas', 'aria-labelledby': 'megas-title' }, [
+      el('div', { class: 'section-head' }, [
+        el('h3', { class: 'section-title section-title--small', id: 'megas-title', text: 'Beste Mega-Entwicklung' }),
+        el('p', { text: 'Pro Person ist nur eine aktiv. Sie stärkt außerdem die Attacken aller anderen im Raid (+10 %, ihres Typs +30 %).' }),
+      ]),
+      el('ol', { class: 'rows rows--compact', id: 'mega-list' }, megas.slice(0, 3).map((entry, i) => counterRow(entry, i, top, { compact: true }))),
     ]);
   }
 
   // Bester Konter je Angriffstyp, der den Boss sehr effektiv trifft – hilft, wenn die Top-Konter fehlen.
   function byTypeSection(list, pokemon) {
-    const types = Raid.TYPE_ORDER
-      .map((type) => ({ type, factor: RaidCalc.effectiveness(data, type, pokemon.types) }))
-      .filter((t) => t.factor > 1)
-      .sort((a, b) => b.factor - a.factor);
-    const items = types.map(({ type, factor }) => {
+    const items = factors(pokemon).weak.map(({ type, factor }) => {
       const best = list.filter((e) => e.charged.type === type).slice(0, 3);
       return best.length ? { type, factor, best } : null;
     }).filter(Boolean);
     if (!items.length) return null;
-    return el('section', { class: 'by-type', 'aria-labelledby': 'by-type-title' }, [
-      el('div', { class: 'section-head' }, [
-        el('h2', { class: 'section-title', id: 'by-type-title', text: 'Die Besten je Typ' }),
-        el('p', { text: 'Nach Typ der Lade-Attacke – falls dir die Top-Konter fehlen.' }),
-      ]),
+    return el('details', { class: 'by-type', id: 'by-type' }, [
+      el('summary', {}, [el('span', { text: 'Die Besten je Typ' }), el('small', { text: ' – falls dir die Top-Konter fehlen' })]),
       el('div', { class: 'by-type__grid' }, items.map(({ type, factor, best }) => el('article', { class: `type-card type-${Raid.slugOf(type)}` }, [
-        el('h3', { class: 'type-card__head' }, [Raid.typeChip(type), el('span', { class: 'type-card__factor', text: `${formatFactor(factor)} effektiv` })]),
+        el('h4', { class: 'type-card__head' }, [Raid.typeChip(type), el('span', { class: 'type-card__factor', text: `${formatFactor(factor)} effektiv` })]),
         el('ol', { class: 'type-card__list' }, best.map((entry) => el('li', {}, [
           Raid.pokemonArt(entry.attacker, { size: 'xs', shadow: entry.attacker.shadow }),
           el('span', { class: 'type-card__name' }, [
@@ -374,36 +442,82 @@ const Detail = (() => {
     ]);
   }
 
-  function renderCounters() {
-    const pokemon = Raid.pokemon(boss.pokemon);
-    const list = ranking();
-    const scrollY = window.scrollY;
-    container.querySelector('#counter-area').replaceChildren(
+  function countersPanel(pokemon) {
+    const all = ranking();
+    const normal = all.filter((e) => !isMega(e.attacker));
+    return [
       controls(),
-      list.length ? teamSection(list) : null,
-      rankingSection(list),
-      byTypeSection(list, pokemon),
-    );
-    for (const btn of container.querySelectorAll('.move-btn')) btn.setAttribute('aria-pressed', String(state[btn.dataset.kind] === btn.dataset.move));
+      all.length ? teamSection(all) : null,
+      rankingSection(normal),
+      megaSection(all.filter((e) => isMega(e.attacker))),
+      byTypeSection(normal, pokemon),
+    ];
+  }
+
+  // ---------- Reiter ----------
+
+  function tabs() {
+    return el('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Ansicht' }, TABS.map((t) => el('button', {
+      type: 'button',
+      role: 'tab',
+      id: `tab-${t.id}`,
+      class: 'tabs__btn',
+      'aria-selected': String(t.id === state.tab),
+      'aria-controls': 'tab-panel',
+      tabindex: t.id === state.tab ? '0' : '-1',
+      onclick: () => selectTab(t.id),
+      onkeydown: onTabKey,
+    }, [t.label])));
+  }
+
+  function selectTab(id) {
+    state.tab = id;
+    for (const btn of container.querySelectorAll('.tabs__btn')) {
+      const active = btn.id === `tab-${id}`;
+      btn.setAttribute('aria-selected', String(active));
+      btn.tabIndex = active ? 0 : -1;
+    }
+    container.querySelector('#tab-panel').setAttribute('aria-labelledby', `tab-${id}`);
+    renderPanel();
+    container.querySelector(`#tab-${id}`).focus();
+  }
+
+  // Pfeiltasten wechseln zwischen den Reitern (Tastatur-Bedienung).
+  function onTabKey(e) {
+    const i = TABS.findIndex((t) => t.id === state.tab);
+    const moves = { ArrowRight: 1, ArrowLeft: -1, Home: -i, End: TABS.length - 1 - i };
+    if (!(e.key in moves)) return;
+    e.preventDefault();
+    selectTab(TABS[(i + moves[e.key] + TABS.length) % TABS.length].id);
+  }
+
+  function renderPanel() {
+    const pokemon = Raid.pokemon(boss.pokemon);
+    const scrollY = window.scrollY;
+    container.querySelector('#tab-panel').replaceChildren(...(state.tab === 'konter' ? countersPanel(pokemon) : infosPanel(pokemon)).filter(Boolean));
     // Neu zeichnen darf die Seite nicht verschieben.
     window.scrollTo(0, scrollY);
   }
 
-  function render(key, target) {
+  // backToStart: Der Zurück-Link führt zur Startseite statt zur Raid-Art (man kam über Suche oder Kalender).
+  function render(key, target, { backToStart = false } = {}) {
+    // Ein anderer Boss beginnt immer mit den Kontern.
+    if (boss?.key !== key) state.tab = 'konter';
     boss = Raid.boss(key);
     container = target;
     state.bossFast = '';
     state.bossCharged = '';
     state.listSize = LIST_STEP;
     const pokemon = Raid.pokemon(boss.pokemon);
-    const bossStat = RaidCalc.bossStats(data, boss);
+    const group = Overview.groupOf(boss);
     target.replaceChildren(
-      el('a', { class: 'back-link', href: '#', id: 'back' }, ['← Alle Raid-Bosse']),
-      bossPanel(pokemon, bossStat),
-      el('div', { class: 'info-grid' }, [catchCard(), typeCard(pokemon), statCard(pokemon), movesCard()]),
-      el('div', { id: 'counter-area' }),
+      backToStart ? el('a', { class: 'back-link', href: '#', id: 'back' }, ['← Startseite'])
+        : el('a', { class: 'back-link', href: `#kategorie=${group.id}`, id: 'back' }, [`← ${group.heading}`]),
+      bossPanel(pokemon),
+      tabs(),
+      el('div', { id: 'tab-panel', class: 'tab-panel', role: 'tabpanel', 'aria-labelledby': `tab-${state.tab}` }),
     );
-    renderCounters();
+    renderPanel();
   }
 
   return { render, current: () => boss };

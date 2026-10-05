@@ -5,20 +5,26 @@ Konter für alle Raid-Bosse ab 5 Sternen in **Pokémon GO**: Legendäre, Mysteri
 sowie die Crypto-Bosse aus 5-Sterne-Crypto-Raids. Dynamax- und Gigadynamax-Kämpfe stehen im
 [Dyna-Kompass](https://jason-z-tech.github.io/dyna-kompass/).
 
-- **Übersicht:** Raid-Kalender („Jetzt im Raid“ und „Demnächst“ mit Datum), Suche (deutsch oder englisch)
-  und alle Bosse nach Raid-Art: Legendär, Mega, Crypto, Ultrabestien, Mysteriös, Proto.
-- **Boss-Seite:** Boss-WP und -KP, Zeitlimit, geschätzte Spielerzahl, Fang-WP (Spanne und 100 %, mit und ohne
-  Wetterboost), Wetter, Schwächen und Resistenzen, Basiswerte und alle Attacken des Bosses.
-- **Konter:** bestes Team für eine Person, Top-Konter mit Attacken, DPS und TDO, die Besten je Angriffstyp.
-  Einstellbar: Level 30/40/50, Wetter, Crypto-Pokémon, Mega & Proto, Legendäre/Mysteriöse/Ultrabestien,
-  Elite-Attacken – und die Attacken des Bosses, falls man sie kennt.
+- **Startseite:** „Jetzt im Raid“ (und aufklappbar „Demnächst im Raid“ mit Datum), darunter die Raid-Arten als
+  Kacheln – Legendär, Mega, Crypto, Ultrabestien, Mysteriös, Proto. Erst ein Tipp auf eine Raid-Art zeigt deren
+  Bosse. Die Suche (deutsch oder englisch) findet jeden Boss direkt.
+- **Boss-Seite:** oben das Wichtigste auf einen Blick – Boss-WP, Fang-WP mit 100 % (mit und ohne Wetterboost),
+  geschätzte Spielerzahl und Schwächen. Darunter zwei Reiter:
+  - **Konter:** bestes Team für eine Person, die Top 10 (bis 50 über „Weitere anzeigen“) mit Attacken, DPS und TDO,
+    getrennt davon die drei besten Mega-Entwicklungen, und aufklappbar die Besten je Angriffstyp.
+    **Crypto-Pokémon sind standardmäßig aus** (sonst stünden fast nur sie oben) und lassen sich mit einem Schalter
+    dazunehmen. Level 30/40/50 direkt darüber; unter „Mehr Einstellungen“ Wetter, Legendäre/Mysteriöse/Ultrabestien,
+    Elite-Attacken und die Attacken des Bosses, falls man sie kennt.
+  - **Boss-Infos:** Fang-WP-Spannen, Wetter, Schwächen und Resistenzen, Basiswerte, KP und Zeitlimit,
+    alle Attacken des Bosses.
 
 **Online:** https://jason-z-tech.github.io/raid-kompass/
 
 ## Starten
 
 Lokal: `index.html` doppelklicken. Die Seite braucht keinen Server und keine Installation.
-Direktlinks: `index.html#boss=xerneas`, `index.html#boss=gengar-mega`, `index.html#boss=crypto-ho-oh`.
+Direktlinks: `index.html#kategorie=mega` (Raid-Art: `legendary`, `mega`, `shadow`, `ultrabeast`, `mythical`, `primal`),
+`index.html#boss=xerneas`, `index.html#boss=gengar-mega`, `index.html#boss=crypto-ho-oh`.
 
 ## Veröffentlichen (GitHub Pages)
 
@@ -38,7 +44,8 @@ Nach etwa einer Minute ist die neue Version online. Die Git-Identität ist nur f
 (`Jason-Z-tech`, noreply-Adresse von GitHub) – so erscheint keine private E-Mail-Adresse in den Commits.
 
 **Wenn sich etwas in `js/` oder `css/` geändert hat:** vor dem Push in `index.html` und `datenschutz.html` den Zusatz
-`?v=2026-10-05` an den Skript- und Stylesheet-Adressen auf das heutige Datum setzen (suchen und ersetzen).
+`?v=2026-10-05-2` an den Skript- und Stylesheet-Adressen auf das heutige Datum setzen (suchen und ersetzen;
+am selben Tag mit `-2`, `-3` … anhängen).
 Browser behalten Dateien von GitHub Pages bis zu 10 Minuten und würden sonst alte und neue Skripte mischen.
 
 GitHub Pages unterstützt keine eigenen HTTP-Header; die Sicherheitsregeln (Content-Security-Policy) stehen
@@ -53,11 +60,13 @@ node tests/e2e.mjs --url https://jason-z-tech.github.io/raid-kompass/   # veröf
 ```
 
 Startet ein unsichtbares Chrome (oder Edge) und klickt die Seite mit echten Mausklicks durch – auf Desktop-,
-Tablet- und Handy-Breite: Raid-Arten, Suche, jede Boss-Seite (auf dem Desktop alle, sonst jede vierte), alle
-Filter, die Boss-Attacken, „Weitere anzeigen“, Zurück-Link und Browser-Zurück, Direktlinks und die
-Datenschutz-Seite. Geprüft wird u. a., dass Boss-WP und Fang-WP mit einer unabhängigen Rechnung übereinstimmen,
-die Konter richtig sortiert sind, kein Team zwei Mega-Entwicklungen hat, ausgeschaltete Filter wirklich greifen,
-nichts seitlich überläuft und der Browser keine Fehler meldet (z. B. fehlende Bilder).
+Tablet- und Handy-Breite: jede Raid-Art (genau ihre Bosse, zurück mit Fokus auf der Kachel), Suche, jede
+Boss-Seite über ihre Raid-Art (auf dem Desktop alle, sonst jede vierte) samt Reiter „Boss-Infos“, Crypto-Schalter,
+„Mehr Einstellungen“, die Boss-Attacken, „Weitere anzeigen“, Zurück-Links und Browser-Zurück/-Vor, Direktlinks und
+die Datenschutz-Seite. Geprüft wird u. a., dass Boss-WP und Fang-WP mit einer unabhängigen Rechnung übereinstimmen,
+die Konter (und die Mega-Liste) dieselben sind wie in der Rechnung, ohne Crypto-Schalter keine Crypto-Pokémon
+erscheinen, kein Team zwei Mega-Entwicklungen hat, ausgeschaltete Filter wirklich greifen, nichts seitlich
+überläuft und der Browser keine Fehler meldet (z. B. fehlende Bilder).
 Für den Raid-Kalender stellt der Test Datum und Uhrzeit im Browser um – eine Minute vor und nach einem
 Raid-Wechsel – und jede Bildschirmbreite läuft in einer anderen Zeitzone (Zürich, Los Angeles, Auckland).
 Mit `--url` nimmt der Test die erwarteten Werte aus den veröffentlichten Daten, nicht aus der lokalen Kopie.
@@ -141,15 +150,15 @@ Die Werte sind eine Schätzung: Ausweichen, Freundschafts-Bonus und Zufall im Ka
 ## Aufbau
 
 ```
-index.html                 Übersicht und Boss-Seite (#boss=<schlüssel>)
+index.html                 Startseite, Raid-Art (#kategorie=<art>) und Boss-Seite (#boss=<schlüssel>)
 datenschutz.html           Datenschutzerklärung
 assets/favicon.svg         Seiten-Icon (eigenes Design: Raid-Ei)
 css/style.css              Design
 js/calc.js                 Kampf-Rechnung (DPS, TDO, Rangliste, Spielerzahl) – auch vom Daten-Skript genutzt
 js/shared.js               gemeinsame Bausteine (DOM-Helfer, Texte, Datum, Formatierung)
-js/overview.js             Übersicht: Raid-Kalender, Suche, Raid-Art, Kacheln
-js/detail.js               Boss-Seite: Boss-Infos, Filter, Team, Konter
-js/app.js                  Start und Navigation
+js/overview.js             Startseite (Raid-Kalender, Raid-Arten, Suche) und Boss-Liste einer Raid-Art
+js/detail.js               Boss-Seite: Kopf, Reiter Konter (Einstellungen, Team, Listen) und Boss-Infos
+js/app.js                  Start und Navigation (Zurück-Links, Browser-Verlauf, Fokus)
 data/raid-data.js          erzeugte Daten (nicht von Hand bearbeiten)
 assets/img/                Pokémon-Bilder als WebP (erzeugt)
 assets/fonts/              Schriften, lokal eingebunden

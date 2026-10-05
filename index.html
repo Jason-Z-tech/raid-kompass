@@ -9,13 +9,13 @@
   <meta name="description" content="Die besten Konter gegen jeden Raid-Boss ab 5 Sternen in Pokémon GO – Legendäre, Mega-, Proto- und Crypto-Raids, mit Boss-WP, 100-%-Fang-WP, Wetter, Schwächen und Attacken.">
   <meta name="theme-color" content="#0b0d18">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="css/style.css?v=2026-10-05">
-  <script src="data/raid-data.js?v=2026-10-05" defer></script>
-  <script src="js/calc.js?v=2026-10-05" defer></script>
-  <script src="js/shared.js?v=2026-10-05" defer></script>
-  <script src="js/overview.js?v=2026-10-05" defer></script>
-  <script src="js/detail.js?v=2026-10-05" defer></script>
-  <script src="js/app.js?v=2026-10-05" defer></script>
+  <link rel="stylesheet" href="css/style.css?v=2026-10-05-2">
+  <script src="data/raid-data.js?v=2026-10-05-2" defer></script>
+  <script src="js/calc.js?v=2026-10-05-2" defer></script>
+  <script src="js/shared.js?v=2026-10-05-2" defer></script>
+  <script src="js/overview.js?v=2026-10-05-2" defer></script>
+  <script src="js/detail.js?v=2026-10-05-2" defer></script>
+  <script src="js/app.js?v=2026-10-05-2" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Zum Inhalt springen</a>
@@ -28,40 +28,45 @@
     </nav>
     <p class="hero__eyebrow">Pokémon GO · Raids ab 5 Sternen</p>
     <h1 class="hero__title">Raid<span>-</span>Kompass</h1>
-    <p class="hero__lead">Wähle einen Raid-Boss und sieh sofort die besten Konter – mit allem, was du zum Boss wissen musst: WP, 100-%-Fang-WP, Wetter, Schwächen und Attacken.</p>
+    <p class="hero__lead">Raid-Art wählen, Boss antippen – und du siehst die besten Konter und alles zum Boss: WP, 100-%-Fang-WP, Wetter und Schwächen.</p>
     <p class="hero__meta" id="data-meta"></p>
   </header>
 
   <main id="main" tabindex="-1">
     <noscript><p class="state">Diese Seite braucht JavaScript, um die Raid-Bosse anzuzeigen.</p></noscript>
 
-    <div id="view-overview" class="overview">
+    <div id="view-start" class="overview">
       <section class="schedule" id="schedule" aria-labelledby="schedule-title" hidden>
-        <h2 class="section-title" id="schedule-title">Raid-Kalender</h2>
-        <div class="schedule__groups" id="schedule-groups"></div>
+        <h2 class="section-title" id="schedule-title">Jetzt im Raid</h2>
+        <ul class="schedule__list" id="schedule-now"></ul>
+        <details class="schedule__soon" id="schedule-soon-wrap" hidden>
+          <summary>Demnächst im Raid <small id="schedule-soon-count"></small></summary>
+          <ul class="schedule__list schedule__list--soon" id="schedule-soon"></ul>
+        </details>
       </section>
 
-      <section class="bosses" aria-labelledby="bosses-title">
+      <section class="start" aria-labelledby="start-title">
         <div class="section-head">
-          <h2 class="section-title" id="bosses-title">Alle Raid-Bosse</h2>
-          <p class="section-head__count" id="bosses-count" aria-live="polite"></p>
+          <h2 class="section-title" id="start-title">Raid-Art wählen</h2>
+          <p>Oder direkt nach einem Boss suchen.</p>
         </div>
-        <form class="finder" id="finder" autocomplete="off">
+        <form class="finder" id="finder" autocomplete="off" role="search">
           <div class="search">
             <label class="visually-hidden" for="search">Raid-Boss suchen</label>
             <svg class="search__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.05l4.25 4.24-1.42 1.42-4.24-4.25A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
             <input id="search" name="search" type="search" placeholder="Boss suchen, z. B. Xerneas …" autocomplete="off" enterkeyhint="search">
             <button class="search__clear" id="search-clear" type="button" aria-label="Suche leeren" hidden>×</button>
           </div>
-          <fieldset class="chips" id="category-filter">
-            <legend class="control-label">Raid-Art</legend>
-            <div class="chips__options" id="category-options"></div>
-          </fieldset>
         </form>
-        <ul class="boss-grid" id="boss-grid"></ul>
-        <p class="state" id="boss-empty" hidden></p>
+        <ul class="category-grid" id="category-grid"></ul>
+        <div class="search-results" id="search-results" hidden>
+          <p class="section-head__count" id="search-count" aria-live="polite"></p>
+          <ul class="boss-grid" id="search-grid"></ul>
+        </div>
       </section>
     </div>
+
+    <div id="view-category" class="overview" hidden></div>
 
     <div id="view-detail" class="detail" hidden></div>
   </main>
@@ -79,7 +84,7 @@
       </article>
       <article>
         <h3>Crypto und Mega</h3>
-        <p>Crypto-Pokémon machen 20 % mehr Schaden und halten 17 % weniger aus. Eine aktive Mega-Entwicklung verstärkt die Attacken aller anderen im Raid um 10 % (ihres Typs um 30 %), ihre eigenen aber nicht – gerechnet wird ohne diesen Bonus. Pro Person ist nur eine Mega-Entwicklung aktiv.</p>
+        <p>Crypto-Pokémon machen 20 % mehr Schaden und halten 17 % weniger aus. Weil sie dadurch fast immer ganz oben stünden, sind sie in der Konter-Liste standardmäßig aus – der Schalter „Crypto-Pokémon“ nimmt sie dazu. Eine aktive Mega-Entwicklung verstärkt die Attacken aller anderen im Raid um 10 % (ihres Typs um 30 %), ihre eigenen aber nicht – gerechnet wird ohne diesen Bonus. Pro Person ist nur eine Mega-Entwicklung aktiv, deshalb stehen die besten Mega-Entwicklungen in einer eigenen Liste.</p>
       </article>
       <article>
         <h3>Spielerzahl</h3>
