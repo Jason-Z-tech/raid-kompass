@@ -140,28 +140,113 @@ main:focus, .boss__name:focus { outline: none; }
   animation: pulse 5s ease-in-out infinite;
 }
 
+/* Kopfleiste in einer Zeile: links die eigene Seite als Reiter, rechts abgesetzt der Link zur
+   Schwesterseite Dyna-Kompass – bewusst kein zweiter Reiter. */
 .page-nav {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 4px;
+  display: flex;
+  flex-wrap: wrap; /* nur bei sehr großer Schrift oder starkem Zoom: dann rutscht der Knopf in eine zweite Zeile */
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 28px;
+}
+.page-nav__tabs {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding: 3px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: #0b0d18cc;
   backdrop-filter: blur(8px);
 }
 .page-nav__link {
-  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  white-space: nowrap;
   border-radius: 999px;
   color: var(--muted);
   font-weight: 700;
-  font-size: .92rem;
+  font-size: .875rem;
   text-decoration: none;
   transition: background .2s var(--ease), color .2s var(--ease);
 }
-.page-nav__link:hover { color: var(--text); background: #ffffff0f; }
 .page-nav__link[aria-current="page"] { background: var(--text); color: var(--bg); }
+.page-nav__link:focus-visible { outline-offset: 0; }
+
+/* Schwesterseite Dyna-Kompass: rot wie deren Logo, mit dem Dyna-Stern; der Pfeil heißt "andere Website".
+   Der Linktext ist immer vollständig ("Schwesterseite Dyna-Kompass – Max-Kämpfe …"),
+   sichtbar ist je nach Breite nur ein Teil davon. */
+.page-nav__sister {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 48px;
+  margin-left: auto;
+  padding: 0 12px 0 10px;
+  border: 1px solid #ff2e6380;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff2e632e, #ff2e630a);
+  color: var(--text);
+  font-weight: 700;
+  font-size: .875rem;
+  line-height: 1.15;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: border-color .2s var(--ease), background-color .2s var(--ease);
+}
+.page-nav__sister-logo { flex: none; width: 20px; height: 20px; }
+.page-nav__sister-arrow { flex: none; width: 12px; height: 12px; color: #ff8fab; transition: translate .2s var(--ease); }
+.page-nav__sister-text { display: flex; flex-direction: column; }
+.page-nav__sister-kicker,
+.page-nav__sister-more {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+@media (hover: hover) {
+  .page-nav__link:hover { color: var(--text); background: #ffffff0f; }
+  .page-nav__link[aria-current="page"]:hover { background: var(--text); color: var(--bg); }
+  .page-nav__sister:hover { border-color: #ff2e63cc; background-color: #ff2e631c; }
+  .page-nav__sister:hover .page-nav__sister-arrow { translate: 2px -2px; }
+}
+
+/* Sehr schmale Handys: etwas enger, damit Reiter und Knopf in eine Zeile passen. */
+@media (max-width: 359.98px) {
+  .page-nav { gap: 8px 6px; }
+  .page-nav__link { padding: 0 10px; }
+  .page-nav__sister { gap: 4px; padding: 0 10px 0 8px; }
+}
+/* Ab Tablet-Breite mit der Zeile "Schwesterseite" über dem Namen. */
+@media (min-width: 560px) {
+  .page-nav__link { padding: 0 16px; font-size: .92rem; }
+  .page-nav__sister { gap: 10px; padding: 0 18px 0 14px; font-size: .92rem; }
+  .page-nav__sister-logo { width: 24px; height: 24px; }
+  .page-nav__sister-kicker {
+    position: static;
+    width: auto; height: auto;
+    overflow: visible;
+    clip: auto;
+    font-family: var(--font-display);
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: #ff8fab;
+  }
+}
+@media (forced-colors: active) {
+  .page-nav__link[aria-current="page"] { text-decoration: underline; text-underline-offset: 4px; }
+  .page-nav__sister-arrow { color: inherit; }
+}
 
 .hero__eyebrow {
   margin: 0 0 6px;

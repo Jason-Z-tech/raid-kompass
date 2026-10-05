@@ -44,7 +44,7 @@ Nach etwa einer Minute ist die neue Version online. Die Git-Identität ist nur f
 (`Jason-Z-tech`, noreply-Adresse von GitHub) – so erscheint keine private E-Mail-Adresse in den Commits.
 
 **Wenn sich etwas in `js/` oder `css/` geändert hat:** vor dem Push in `index.html` und `datenschutz.html` den Zusatz
-`?v=2026-10-05-2` an den Skript- und Stylesheet-Adressen auf das heutige Datum setzen (suchen und ersetzen;
+`?v=2026-10-05-4` an den Skript- und Stylesheet-Adressen auf das heutige Datum setzen (suchen und ersetzen;
 am selben Tag mit `-2`, `-3` … anhängen).
 Browser behalten Dateien von GitHub Pages bis zu 10 Minuten und würden sonst alte und neue Skripte mischen.
 
