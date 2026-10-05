@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>Raid-Kompass – Konter für alle 5-Sterne-, Mega- und Crypto-Raids</title>
+  <meta name="description" content="Die besten Konter gegen jeden Raid-Boss ab 5 Sternen in Pokémon GO – Legendäre, Mega-, Proto- und Crypto-Raids, mit Boss-WP, 100-%-Fang-WP, Wetter, Schwächen und Attacken.">
+  <meta name="theme-color" content="#0b0d18">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css?v=2026-10-05">
+  <script src="data/raid-data.js?v=2026-10-05" defer></script>
+  <script src="js/calc.js?v=2026-10-05" defer></script>
+  <script src="js/shared.js?v=2026-10-05" defer></script>
+  <script src="js/overview.js?v=2026-10-05" defer></script>
+  <script src="js/detail.js?v=2026-10-05" defer></script>
+  <script src="js/app.js?v=2026-10-05" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Zum Inhalt springen</a>
+
+  <header class="hero">
+    <div class="hero__glow" aria-hidden="true"></div>
+    <nav class="page-nav" aria-label="Seiten">
+      <a class="page-nav__link" href="index.html" aria-current="page">Raid-Konter</a>
+      <a class="page-nav__link" href="https://jason-z-tech.github.io/dyna-kompass/">Max-Kämpfe ↗</a>
+    </nav>
+    <p class="hero__eyebrow">Pokémon GO · Raids ab 5 Sternen</p>
+    <h1 class="hero__title">Raid<span>-</span>Kompass</h1>
+    <p class="hero__lead">Wähle einen Raid-Boss und sieh sofort die besten Konter – mit allem, was du zum Boss wissen musst: WP, 100-%-Fang-WP, Wetter, Schwächen und Attacken.</p>
+    <p class="hero__meta" id="data-meta"></p>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <noscript><p class="state">Diese Seite braucht JavaScript, um die Raid-Bosse anzuzeigen.</p></noscript>
+
+    <div id="view-overview" class="overview">
+      <section class="schedule" id="schedule" aria-labelledby="schedule-title" hidden>
+        <h2 class="section-title" id="schedule-title">Raid-Kalender</h2>
+        <div class="schedule__groups" id="schedule-groups"></div>
+      </section>
+
+      <section class="bosses" aria-labelledby="bosses-title">
+        <div class="section-head">
+          <h2 class="section-title" id="bosses-title">Alle Raid-Bosse</h2>
+          <p class="section-head__count" id="bosses-count" aria-live="polite"></p>
+        </div>
+        <form class="finder" id="finder" autocomplete="off">
+          <div class="search">
+            <label class="visually-hidden" for="search">Raid-Boss suchen</label>
+            <svg class="search__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.05l4.25 4.24-1.42 1.42-4.24-4.25A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
+            <input id="search" name="search" type="search" placeholder="Boss suchen, z. B. Xerneas …" autocomplete="off" enterkeyhint="search">
+            <button class="search__clear" id="search-clear" type="button" aria-label="Suche leeren" hidden>×</button>
+          </div>
+          <fieldset class="chips" id="category-filter">
+            <legend class="control-label">Raid-Art</legend>
+            <div class="chips__options" id="category-options"></div>
+          </fieldset>
+        </form>
+        <ul class="boss-grid" id="boss-grid"></ul>
+        <p class="state" id="boss-empty" hidden></p>
+      </section>
+    </div>
+
+    <div id="view-detail" class="detail" hidden></div>
+  </main>
+
+  <section class="method" aria-labelledby="method-title">
+    <h2 id="method-title">So wird gerechnet</h2>
+    <div class="method__grid">
+      <article>
+        <h3>DPS und TDO</h3>
+        <p>DPS ist der Schaden pro Sekunde, TDO der Gesamtschaden, bis das Pokémon besiegt ist. Gerechnet wird mit perfekten Werten (15/15/15) auf dem gewählten Level, inklusive STAB, Typ-Effektivität, Wetter und Energie aus erlittenem Schaden (Formel nach GamePress). Der Boss lädt seine Lade-Attacken auch mit dem Schaden, den er einsteckt.</p>
+      </article>
+      <article>
+        <h3>Rangliste</h3>
+        <p>Pro Pokémon zählt das beste Attacken-Paar gegen genau diesen Boss. Sortiert wird nach einer Wertung, die Tempo stärker gewichtet als Ausdauer: (DPS³ × TDO)<sup>¼</sup>. Ohne gewählte Boss-Attacken wird über alle möglichen Paare des Bosses gemittelt.</p>
+      </article>
+      <article>
+        <h3>Crypto und Mega</h3>
+        <p>Crypto-Pokémon machen 20 % mehr Schaden und halten 17 % weniger aus. Eine aktive Mega-Entwicklung verstärkt die Attacken aller anderen im Raid um 10 % (ihres Typs um 30 %), ihre eigenen aber nicht – gerechnet wird ohne diesen Bonus. Pro Person ist nur eine Mega-Entwicklung aktiv.</p>
+      </article>
+      <article>
+        <h3>Spielerzahl</h3>
+        <p>Jede Person kämpft mit ihrem Team, bis die Zeit abläuft; nach sechs besiegten Pokémon kostet das Neu-Beitreten 10 Sekunden. Die KP des Bosses geteilt durch den Schaden, den eine Person so schafft, ergibt die Mindestzahl – ohne Freundschafts-Bonus und mit sauber gespielten Attacken. Crypto-Raids brauchen immer mindestens 2 Personen.</p>
+      </article>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p id="sources"></p>
+    <p>Inoffizielles, nicht-kommerzielles Fanprojekt ohne Verbindung zu Nintendo, The Pokémon Company oder Scopely. Pokémon, Pokémon GO und die Namen der Pokémon sind Marken von Nintendo. © Pokémon/Nintendo/Creatures/GAME FREAK.</p>
+    <p><a href="index.html" aria-current="page">Raid-Konter</a> · <a href="https://jason-z-tech.github.io/dyna-kompass/">Dyna-Kompass (Max-Kämpfe)</a> · <a href="datenschutz.html">Datenschutz</a></p>
+  </footer>
+</body>
+</html>
