@@ -611,9 +611,10 @@ function makeNameResolver(pokemon, textsEn) {
 // Tagesgenaue Zeitpunkte als Ortszeit ("2026-09-30T06:00"): Raids wechseln überall zur selben Ortszeit.
 const localTime = (iso) => (iso ? iso.slice(0, 16) : null);
 
-// Boss-Namen eines Super-Mega-Raid-Tags: aus den Event-Details oder – solange Leek Duck dort nichts einträgt –
-// aus dem Titel, z. B. "Mega Gengar Super Mega Raid Day" oder "Mega Raichu X and Mega Raichu Y Super Mega Raid Day".
-// Ein Titel ohne Boss ("Super Mega Raid Day") heißt: Der Boss ist noch nicht bekannt.
+// Boss-Namen eines Super-Mega-Raid-Tags. Leek Duck nennt sie im Titel, meist nur mit der Art
+// ("Starmie Super Mega Raid Day"), manchmal mit "Mega" ("Mega Raichu X and Mega Raichu Y Super Mega Raid Day").
+// Ein Titel ohne Boss ("Super Mega Raid Day") heißt: Der Boss ist noch nicht bekannt. Falls ScrapedDuck einmal
+// Event-Details für Raid-Tage liefert, gelten die.
 function superMegaDayBosses(ev) {
   if (ev.extraData?.raidbattles?.bosses?.length) return ev.extraData.raidbattles.bosses;
   const prefix = /^(.*?)\s*Super Mega Raid Day/i.exec(ev.name)?.[1]?.trim();
@@ -621,12 +622,42 @@ function superMegaDayBosses(ev) {
   return prefix.split(/,\s*(?:and\s+)?|\s+and\s+/).filter(Boolean).map((name) => ({ name, canBeShiny: false }));
 }
 
+// Ein Super-Mega-Raid-Tag gilt immer der Mega-Entwicklung: "Starmie" → Mega-Starmie, "Raichu" → Mega-Raichu X und Y.
+function superMegaEntries(name, resolve) {
+  const base = name.replace(/^Mega\s+/i, '');
+  const direct = resolve(`Mega ${base}`);
+  if (direct) return [direct];
+  return ['X', 'Y'].map((letter) => resolve(`Mega ${base} ${letter}`)).filter(Boolean);
+}
+
 function applySchedule(bosses, events, currentRaids, resolve, hints) {
   const byKey = new Map(bosses.map((b) => [b.key, b]));
   const scheduled = new Set();
+
+  function addSlot(ev, b, entry, { shadowEvent, superMegaDay }) {
+    const key = shadowEvent ? `crypto-${entry.key}` : entry.key;
+    const boss = byKey.get(key);
+    if (!boss) {
+      // Nur 5-Sterne-, Mega- und Crypto-5-Sterne-Raids gehören auf die Seite.
+      if (entry.class || entry.variant !== 'normal') hints.push(`Raid-Kalender: ${b.name} (${ev.name}) ist kein Boss auf der Seite – NOT_RAID_BOSSES prüfen.`);
+      return;
+    }
+    const slot = { start: localTime(ev.start), end: localTime(ev.end), shiny: Boolean(b.canBeShiny) };
+    if (superMegaDay) {
+      slot.superMega = true;
+      // Der Kalender vergisst das Event, sobald es vorbei ist – der Hinweis auf der Boss-Seite soll bleiben.
+      if (!boss.superMega) hints.push(`${boss.name} kommt als Super-Mega-Raid (${slot.start.slice(0, 10)}) – in SUPER_MEGA eintragen.`);
+      boss.superMega = true;
+    }
+    boss.schedule.push(slot);
+    scheduled.add(key);
+  }
+
   for (const ev of events) {
     const superMegaDay = ev.eventType === 'raid-day' && /super mega raid day/i.test(ev.name);
     if (ev.eventType !== 'raid-battles' && !superMegaDay) continue;
+    // Ohne Datum (fehlt manchmal kurz bei Leek Duck) kann die Seite den Termin nicht einordnen.
+    if (!ev.start) { hints.push(`Raid-Kalender: "${ev.name}" hat noch kein Datum – übersprungen, später neu bauen.`); continue; }
     const eventBosses = superMegaDay ? superMegaDayBosses(ev) : ev.extraData?.raidbattles?.bosses ?? [];
     if (superMegaDay && !eventBosses.length) {
       hints.push(`Super-Mega-Raid-Tag am ${localTime(ev.start).slice(0, 10)}: Leek Duck nennt noch keinen Boss – später neu bauen.`);
@@ -634,24 +665,14 @@ function applySchedule(bosses, events, currentRaids, resolve, hints) {
     }
     const shadowEvent = /shadow raid/i.test(ev.name);
     for (const b of eventBosses) {
-      const entry = resolve(b.name);
-      if (!entry) { hints.push(`Raid-Kalender: "${b.name}" (${ev.name}) keinem Pokémon zugeordnet.`); continue; }
-      const key = shadowEvent ? `crypto-${entry.key}` : entry.key;
-      const boss = byKey.get(key);
-      if (!boss) {
-        // Nur 5-Sterne-, Mega- und Crypto-5-Sterne-Raids gehören auf die Seite.
-        if (entry.class || entry.variant !== 'normal') hints.push(`Raid-Kalender: ${b.name} (${ev.name}) ist kein Boss auf der Seite – NOT_RAID_BOSSES prüfen.`);
+      const entries = superMegaDay ? superMegaEntries(b.name, resolve) : [resolve(b.name)].filter(Boolean);
+      if (!entries.length) {
+        hints.push(superMegaDay
+          ? `Super-Mega-Raid-Tag "${ev.name}": "${b.name}" keiner Mega-Entwicklung zugeordnet.`
+          : `Raid-Kalender: "${b.name}" (${ev.name}) keinem Pokémon zugeordnet.`);
         continue;
       }
-      const slot = { start: localTime(ev.start), end: localTime(ev.end), shiny: Boolean(b.canBeShiny) };
-      if (superMegaDay) {
-        slot.superMega = true;
-        // Der Kalender vergisst das Event, sobald es vorbei ist – der Hinweis auf der Boss-Seite soll bleiben.
-        if (!boss.superMega) hints.push(`${boss.name} kommt als Super-Mega-Raid (${slot.start.slice(0, 10)}) – in SUPER_MEGA eintragen.`);
-        boss.superMega = true;
-      }
-      boss.schedule.push(slot);
-      scheduled.add(key);
+      for (const entry of entries) addSlot(ev, b, entry, { shadowEvent, superMegaDay });
     }
   }
   for (const r of currentRaids) {

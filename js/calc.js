@@ -231,9 +231,10 @@ const RaidCalc = (() => {
   // Team für eine Person: die besten Pokémon verschiedener Arten, höchstens eine Mega-Entwicklung
   // (im Raid kann pro Person nur eine aktiv sein).
   // requireMega: Im Super-Mega-Raid braucht jede Person ein Mega-Pokémon – dann ist das beste immer dabei.
+  // Nur echte Mega-Entwicklungen brechen dort die Schilde, Proto-Groudon und Proto-Kyogre nicht.
   function bestTeam(ranking, size = 6, { requireMega = false } = {}) {
     const isMega = (a) => a.variant === 'mega' || a.variant === 'primal';
-    const forced = requireMega ? ranking.find((e) => isMega(e.attacker)) : null;
+    const forced = requireMega ? ranking.find((e) => e.attacker.variant === 'mega') : null;
     const team = forced ? [forced] : [];
     const species = new Set(forced ? [forced.attacker.speciesId] : []);
     let megaUsed = Boolean(forced);

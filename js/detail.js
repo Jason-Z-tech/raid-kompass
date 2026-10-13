@@ -95,7 +95,7 @@ const Detail = (() => {
   // ---------- Kopf: das Wichtigste auf einen Blick ----------
 
   function bossPanel(pokemon) {
-    const { state: when, slot } = Raid.scheduleState(boss);
+    const { state: when, slot, superDay } = Raid.scheduleState(boss);
     const bossStat = RaidCalc.bossStats(data, boss);
     const range = RaidCalc.catchRange(data, boss);
     const caught = Raid.pokemon(boss.catchPokemon);
@@ -110,10 +110,11 @@ const Detail = (() => {
         el('div', { class: 'boss__chips' }, [
           ...pokemon.types.map((t) => Raid.typeChip(t)),
           when === 'now' ? el('span', { class: 'badge badge--now', text: slot.superMega ? 'Jetzt: Super-Mega-Raid-Tag' : 'Jetzt im Raid' }) : null,
-          when === 'soon'
-            ? el('span', { class: 'badge badge--soon', text: `${slot.superMega ? 'Super-Mega-Raid-Tag am' : 'Im Raid ab'} ${Raid.formatDay(slot.start)}` })
-            : null,
-          boss.superMega ? Raid.superMegaBadge('Super-Mega-Raid') : null,
+          when === 'soon' && slot.superMega ? Raid.superMegaBadge(`Super-Mega-Raid-Tag am ${Raid.formatDay(slot.start)}`) : null,
+          when === 'soon' && !slot.superMega ? el('span', { class: 'badge badge--soon', text: `Im Raid ab ${Raid.formatDay(slot.start)}` }) : null,
+          superDay ? Raid.superMegaBadge(`Super-Mega-Raid-Tag am ${Raid.formatDay(superDay.start)}`) : null,
+          // Ohne Super-Mega-Termin: Marke für Bosse, die (auch) so kommen – neben einer normalen Raid-Woche als "Auch …".
+          boss.superMega && !slot?.superMega && !superDay ? Raid.superMegaBadge(slot ? 'Auch als Super-Mega-Raid' : 'Super-Mega-Raid') : null,
           boss.schedule.some((s) => s.shiny) ? el('span', { class: 'badge badge--shiny', text: 'Schillernd möglich' }) : null,
         ]),
         el('dl', { class: 'facts facts--boss' }, [
@@ -124,13 +125,26 @@ const Detail = (() => {
         ]),
         el('p', { class: 'boss__weak' }, [el('span', { class: 'boss__weak-label', text: 'Schwach gegen' }), factorList(factors(pokemon).weak)]),
         boss.shadow ? el('p', { class: 'boss__note boss__note--shadow', text: 'Crypto-Raid: Der Boss macht und nimmt 20 % mehr Schaden (schon eingerechnet). Ab 60 % KP wird er rasend – mit 8 Erlösten Edelsteinen (höchstens 5 pro Person) bändigt ihr ihn wieder. Deshalb braucht ihr mindestens 2 Personen.' }) : null,
-        boss.superMega ? el('p', { class: 'boss__note boss__note--mega', id: 'super-mega-note' }, [
-          el('strong', { text: 'Super-Mega-Raid: ' }),
-          'Der Boss baut Schilde auf, die nur Mega-Pokémon mit einer Lade-Attacke brechen – jede Person höchstens einen. '
-            + 'Ihr braucht 7 bis 10 Personen, alle mit einem Mega-Pokémon im Team. Die Spielerzahl oben gilt für den normalen Mega-Raid; '
-            + 'unter „Konter“ stehen die besten Mega-Entwicklungen deshalb ganz oben.',
-        ]) : null,
+        boss.superMega ? superMegaNote(when, slot, superDay) : null,
       ]),
+    ]);
+  }
+
+  // Hinweis für Bosse, die (auch) als Super-Mega-Raid kommen – und welcher Raid gerade läuft oder ansteht.
+  function superMegaNote(when, slot, superDay) {
+    const day = (s) => Raid.formatDay(s.start);
+    let timing = '';
+    if (slot?.superMega) timing = when === 'now' ? 'Gerade läuft ein Super-Mega-Raid-Tag. ' : `Am ${day(slot)} ist ein Super-Mega-Raid-Tag. `;
+    else if (slot) {
+      timing = `${when === 'now' ? 'Der Raid gerade' : `Der Raid ab ${day(slot)}`} ist ein normaler Mega-Raid ohne Schilde`
+        + (superDay ? `, der Super-Mega-Raid-Tag ist am ${day(superDay)}. ` : '. ');
+    }
+    return el('p', { class: 'boss__note boss__note--mega', id: 'super-mega-note' }, [
+      el('strong', { text: slot?.superMega || superDay ? 'Super-Mega-Raid: ' : 'Kommt auch als Super-Mega-Raid: ' }),
+      'Dort baut der Boss Schilde auf, die nur echte Mega-Pokémon mit einer Lade-Attacke brechen (Proto-Groudon und Proto-Kyogre nicht) – '
+        + 'jede Person höchstens einen. Ihr braucht 7 bis 10 Personen, alle mit einer Mega-Entwicklung im Team. ',
+      timing,
+      'Die Spielerzahl oben gilt für den normalen Mega-Raid; unter „Konter“ stehen die besten Mega-Entwicklungen ganz oben.',
     ]);
   }
 
@@ -421,7 +435,7 @@ const Detail = (() => {
       el('div', { class: 'section-head' }, [
         el('h3', { class: 'section-title section-title--small', id: 'megas-title', text: superMega ? 'Beste Mega-Entwicklungen' : 'Beste Mega-Entwicklung' }),
         el('p', { text: superMega
-          ? 'Im Super-Mega-Raid braucht jede Person eine: Nur Mega-Pokémon brechen mit ihrer Lade-Attacke die Schilde. Sie stärkt außerdem die Attacken aller anderen (+10 %, ihres Typs +30 %).'
+          ? 'Im Super-Mega-Raid braucht jede Person eine: Nur echte Mega-Pokémon brechen mit ihrer Lade-Attacke die Schilde (Proto-Pokémon nicht). Sie stärkt außerdem die Attacken aller anderen (+10 %, ihres Typs +30 %).'
           : 'Pro Person ist nur eine aktiv. Sie stärkt außerdem die Attacken aller anderen im Raid (+10 %, ihres Typs +30 %).' }),
       ]),
       el('ol', { class: 'rows rows--compact', id: 'mega-list' }, megas.slice(0, superMega ? SUPER_MEGA_COUNT : 3).map((entry, i) => counterRow(entry, i, top, { compact: true }))),
@@ -453,7 +467,8 @@ const Detail = (() => {
   function countersPanel(pokemon) {
     const all = ranking();
     const normal = all.filter((e) => !isMega(e.attacker));
-    const megas = megaSection(all.filter((e) => isMega(e.attacker)));
+    // Bei Super-Mega-Bossen nur echte Mega-Entwicklungen: Proto-Pokémon brechen keine Schilde.
+    const megas = megaSection(all.filter((e) => (boss.superMega ? e.attacker.variant === 'mega' : isMega(e.attacker))));
     return [
       controls(),
       boss.superMega ? megas : null,

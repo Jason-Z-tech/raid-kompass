@@ -76,18 +76,26 @@ const Raid = (() => {
   const formatDate = (iso) => new Date(iso).toLocaleDateString('de-CH', { day: 'numeric', month: 'long', year: 'numeric' });
 
   // Raid-Termine eines Bosses relativ zu jetzt: läuft gerade, kommt bald, oder nichts davon.
+  // superDay: ein angekündigter Super-Mega-Raid-Tag, der hinter dem gezeigten Termin liegt (z. B. mitten in
+  // einer normalen Raid-Woche desselben Bosses) – sonst null.
   function scheduleState(boss, now = new Date()) {
     let current = null;
     let next = null;
+    let nextSuper = null;
     for (const s of boss.schedule) {
       const start = localDate(s.start);
       const end = s.end ? localDate(s.end) : null;
       // Läuft während einer Raid-Woche ein Super-Mega-Raid-Tag, zählt der Tag.
       if (start <= now && (!end || now <= end)) { if (!current || s.superMega) current = s; }
-      else if (start > now && (!next || start < localDate(next.start))) next = s;
+      else if (start > now) {
+        if (!next || start < localDate(next.start)) next = s;
+        if (s.superMega && (!nextSuper || start < localDate(nextSuper.start))) nextSuper = s;
+      }
     }
-    if (current) return { state: 'now', slot: current };
-    return next ? { state: 'soon', slot: next } : { state: null, slot: null };
+    const slot = current ?? next;
+    const superDay = nextSuper && nextSuper !== slot ? nextSuper : null;
+    if (current) return { state: 'now', slot, superDay };
+    return next ? { state: 'soon', slot, superDay } : { state: null, slot: null, superDay: null };
   }
 
   // ---------- Bausteine ----------

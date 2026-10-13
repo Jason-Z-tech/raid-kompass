@@ -124,6 +124,7 @@ const detailState = (page) => page.eval(`(() => {
     dps: parseFloat(li.querySelector('.row__numbers span:first-child strong').textContent.replace(/[’']/g, '')),
     shadow: !!li.querySelector('.row__name .badge--shadow'),
     mega: !!li.querySelector('.row__name .badge--mega, .row__name .badge--primal'),
+    primal: !!li.querySelector('.row__name .badge--primal'),
     elite: !!li.querySelector('.badge--elite'),
   });
   return {
@@ -131,6 +132,7 @@ const detailState = (page) => page.eval(`(() => {
     title: document.getElementById('detail-title')?.textContent,
     back: document.getElementById('back')?.textContent,
     superNote: !!document.getElementById('super-mega-note'),
+    noteText: document.getElementById('super-mega-note')?.textContent ?? '',
     chips: [...document.querySelectorAll('.boss__chips .badge')].map((b) => b.textContent),
     sections: [...document.querySelectorAll('#tab-panel > section, #tab-panel > details')].map((x) => x.className.split(' ')[0]),
     label: document.querySelector('.boss__label')?.textContent,
@@ -141,6 +143,7 @@ const detailState = (page) => page.eval(`(() => {
     team: [...document.querySelectorAll('#team-members .member')].map((m) => ({
       name: m.querySelector('.member__name span').textContent,
       mega: !!m.querySelector('.badge--mega, .badge--primal'),
+      realMega: !!m.querySelector('.badge--mega'),
     })),
     verdict: document.getElementById('team-verdict')?.textContent ?? '',
     verdictStrong: document.querySelector('#team-verdict strong')?.textContent ?? '',
@@ -276,8 +279,10 @@ function slotsAt(when) {
       else if (t(s.start) > nowT && (!next || t(s.start) < t(next.start))) next = s;
     }
     if (active) now.push(boss.key);
-    else if (next) soon.push({ key: boss.key, start: next.start });
-    if ((active ?? next)?.superMega) superDay.push(boss.key);
+    else if (next) soon.push({ key: boss.key, start: next.start, superMega: Boolean(next.superMega) });
+    // "Super-Mega" am Kalender-Eintrag: Der Termin ist einer, oder ein Super-Mega-Raid-Tag ist angekündigt.
+    const upcomingSuper = boss.schedule.some((s) => s.superMega && t(s.start) > nowT);
+    if ((active ?? next) && ((active ?? next).superMega || upcomingSuper)) superDay.push(boss.key);
   }
   return { now, soon, superDay };
 }
@@ -316,12 +321,14 @@ async function testSchedule(page, vp) {
       const n = expected.now.filter((k) => GROUP_OF[DATA.bosses.find((b) => b.key === k).category] === c.id).length;
       check(c.now === n, `${tag} ${when}: Kachel ${c.id} zeigt ${c.now} statt ${n} "jetzt im Raid"`);
     }
-    // Die Marke nennt genau den Starttag: "Ab 7. Oktober" (mit Jahr nur in einem anderen Jahr).
+    // Die Marke nennt genau den Starttag: "Ab 7. Oktober" bzw. "Super-Mega-Raid-Tag am 31. Oktober"
+    // (mit Jahr nur in einem anderen Jahr).
     const badBadge = s.soon.filter((x) => {
-      const start = expected.soon.find((e) => e.key === x.key)?.start;
-      if (!start) return true;
-      const year = start.slice(0, 4) === day.slice(0, 4) ? '' : ` ${start.slice(0, 4)}`;
-      return !new RegExp(`^Ab ${Number(start.slice(8, 10))}\\. \\p{L}+${year}$`, 'u').test(x.badge ?? '');
+      const e = expected.soon.find((y) => y.key === x.key);
+      if (!e) return true;
+      const year = e.start.slice(0, 4) === day.slice(0, 4) ? '' : ` ${e.start.slice(0, 4)}`;
+      const lead = e.superMega ? 'Super-Mega-Raid-Tag am' : 'Ab';
+      return !new RegExp(`^${lead} ${Number(e.start.slice(8, 10))}\\. \\p{L}+${year}$`, 'u').test(x.badge ?? '');
     });
     check(badBadge.length === 0, `${tag} ${when}: falsche Datums-Marke bei ${badBadge.map((x) => `${x.key} "${x.badge}"`).join(', ')}`);
   }
@@ -346,12 +353,14 @@ async function testSchedule(page, vp) {
 
 // ---------- Super-Mega-Raid-Tage ----------
 
-// Die echten Daten nennen nicht immer einen Super-Mega-Raid-Tag. Deshalb stellt der Test zwei Termine im
-// Browser nach: einer läuft gerade (mitten in einer normalen Raid-Woche desselben Bosses), einer ist in zwei Tagen.
+// Die echten Daten nennen nicht immer einen Super-Mega-Raid-Tag. Deshalb stellt der Test Termine im Browser nach
+// (echte Super-Mega-Termine werden vorher entfernt): einer läuft gerade, mitten in einer normalen Raid-Woche
+// desselben Bosses; einer ist in zwei Tagen; und bei einem dritten Boss läuft eine normale Raid-Woche, in der
+// ein Super-Mega-Raid-Tag erst noch kommt.
 async function testSuperMegaDay(page, vp) {
   const tag = `[${vp.label} · Super-Mega-Raid-Tag]`;
   console.log(`${tag} läuft …`);
-  const [nowKey, soonKey] = DATA.bosses.filter((b) => b.superMega).map((b) => b.key);
+  const [nowKey, soonKey, weekKey] = DATA.bosses.filter((b) => b.superMega).map((b) => b.key);
   await page.goto(url('index.html'));
   await page.eval(`(() => {
     const pad = (n) => String(n).padStart(2, '0');
@@ -360,15 +369,32 @@ async function testSuperMegaDay(page, vp) {
       return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
     };
     const boss = (key) => window.RAID_DATA.bosses.find((b) => b.key === key);
+    for (const b of window.RAID_DATA.bosses) b.schedule = b.schedule.filter((x) => !x.superMega);
     boss(${JSON.stringify(nowKey)}).schedule = [{ start: at(-48), end: at(48), shiny: false }, { start: at(-1), end: at(2), shiny: false, superMega: true }];
     boss(${JSON.stringify(soonKey)}).schedule = [{ start: at(48), end: at(51), shiny: false, superMega: true }];
+    boss(${JSON.stringify(weekKey)}).schedule = [{ start: at(-24), end: at(120), shiny: false }, { start: at(72), end: at(75), shiny: false, superMega: true }];
     Overview.refreshSchedule();
+    document.getElementById('schedule-soon-wrap').open = true;
   })()`);
   const s = await startState(page);
-  check(s.now.includes(nowKey) && s.soon.some((x) => x.key === soonKey), `${tag} nachgestellte Termine fehlen im Kalender`);
-  check(JSON.stringify([...s.superDay].sort()) === JSON.stringify([nowKey, soonKey].sort()), `${tag} Marke bei ${s.superDay.join(', ')}`);
+  check(s.now.includes(nowKey) && s.now.includes(weekKey) && s.soon.some((x) => x.key === soonKey), `${tag} nachgestellte Termine fehlen im Kalender`);
+  check(JSON.stringify([...s.superDay].sort()) === JSON.stringify([nowKey, soonKey, weekKey].sort()), `${tag} Marke bei ${s.superDay.join(', ')}`);
   const texts = await page.eval(`[...document.querySelectorAll('#schedule .badge--super')].map((b) => b.textContent)`);
-  check(texts.length === 2 && texts.every((x) => x === 'Super-Mega-Raid-Tag'), `${tag} Marken im Kalender: ${texts.join(', ')}`);
+  check(texts.length === 3 && texts.every((x) => x === 'Super-Mega'), `${tag} Marken im Kalender: ${texts.join(', ')}`);
+  // Der angekündigte Tag steht auch an der laufenden Raid-Woche, und "Demnächst" nennt das Datum.
+  const dates = await page.eval(`({
+    week: document.querySelector('#schedule-now a[data-boss=${JSON.stringify(weekKey)}] .badge--soon')?.textContent ?? null,
+    soon: document.querySelector('#schedule-soon a[data-boss=${JSON.stringify(soonKey)}] .badge--soon')?.textContent ?? null,
+  })`);
+  check(/^Super-Mega-Raid-Tag am \d+\. \p{L}+/u.test(dates.week ?? '') && /^Super-Mega-Raid-Tag am \d+\. \p{L}+/u.test(dates.soon ?? ''),
+    `${tag} Datum des Super-Mega-Raid-Tags fehlt: "${dates.week}" / "${dates.soon}"`);
+  // Keine Marke ragt aus ihrer Kachel.
+  const outside = await page.eval(`[...document.querySelectorAll('#schedule .boss-tile')].flatMap((tile) => {
+    const r = tile.getBoundingClientRect();
+    return [...tile.querySelectorAll('.badge')].filter((b) => b.getClientRects().length).filter((b) => { const x = b.getBoundingClientRect(); return x.left < r.left - 0.5 || x.right > r.right + 0.5; })
+      .map((b) => tile.dataset.boss + ': ' + b.textContent);
+  })`);
+  check(outside.length === 0, `${tag} Marken ragen aus der Kachel: ${outside.join(', ')}`);
   check(!s.overflow, `${tag} Seite ist breiter als der Bildschirm`);
 
   // Boss-Seiten nennen den Termin im Kopf.
@@ -377,10 +403,18 @@ async function testSuperMegaDay(page, vp) {
   check(d.chips.includes('Jetzt: Super-Mega-Raid-Tag') && d.superNote, `${tag} ${nowKey}: Kopf zeigt ${d.chips.join(', ')}`);
   await page.click('#back');
   await sleep(150);
-  await page.click('#schedule-soon-wrap > summary');
+  // "Demnächst" ist noch aufgeklappt (oben per Skript geöffnet).
   await page.click(`#schedule-soon a[data-boss="${soonKey}"]`);
   d = await detailState(page);
   check(d.chips.some((x) => /^Super-Mega-Raid-Tag am \d+\. \p{L}+/u.test(x)) && d.superNote, `${tag} ${soonKey}: Kopf zeigt ${d.chips.join(', ')}`);
+  await page.click('#back');
+  await sleep(150);
+  // Laufende normale Raid-Woche: "Jetzt im Raid", dazu das Datum des kommenden Super-Mega-Raid-Tags; der Hinweis
+  // sagt, dass der Raid gerade ein normaler ist.
+  await page.click(`#schedule-now a[data-boss="${weekKey}"]`);
+  d = await detailState(page);
+  check(d.chips.includes('Jetzt im Raid') && d.chips.some((x) => /^Super-Mega-Raid-Tag am /.test(x)) && /normaler Mega-Raid ohne Schilde/.test(d.noteText),
+    `${tag} ${weekKey}: Kopf zeigt ${d.chips.join(', ')} / "${d.noteText}"`);
 }
 
 // ---------- Boss-Seiten ----------
@@ -401,11 +435,15 @@ async function checkDetail(page, s, boss, tag, { infos }) {
   const megaCount = boss.superMega ? 6 : 3;
   check(s.megas.length > 0 && s.megas.length <= megaCount && s.megas.every((r) => r.mega), `${tag} ${s.megas.length} Einträge in "Beste Mega-Entwicklung"`);
   // Super-Mega-Bosse: Hinweis im Kopf, Marke, Mega-Liste vor dem Team und genau eine Mega-Entwicklung im Team.
-  check(s.superNote === Boolean(boss.superMega) && s.chips.includes('Super-Mega-Raid') === Boolean(boss.superMega),
+  check(s.superNote === Boolean(boss.superMega) && s.chips.some((x) => /Super-Mega-Raid/.test(x)) === Boolean(boss.superMega),
     `${tag} Super-Mega-Hinweis/-Marke ${s.superNote ? 'da' : 'fehlt'}, erwartet ${boss.superMega ? 'da' : 'nicht da'}`);
   const order = s.sections.filter((x) => x === 'megas' || x === 'team');
   check(JSON.stringify(order) === JSON.stringify(boss.superMega ? ['megas', 'team'] : ['team', 'megas']), `${tag} Reihenfolge ${order.join(' → ')}`);
-  if (boss.superMega) check(s.team.filter((m) => m.mega).length === 1, `${tag} Super-Mega-Boss: Team ohne genau eine Mega-Entwicklung`);
+  // Proto-Pokémon brechen keine Schilde: Bei Super-Mega-Bossen weder als Pflicht-Mega im Team noch in der Mega-Liste.
+  if (boss.superMega) {
+    check(s.team.filter((m) => m.realMega).length === 1 && s.team.filter((m) => m.mega).length === 1, `${tag} Super-Mega-Boss: Team ohne genau eine echte Mega-Entwicklung`);
+    check(s.megas.every((r) => !r.primal), `${tag} Super-Mega-Boss: Proto-Pokémon in der Mega-Liste`);
+  }
   check(s.team.length > 0 && s.team.length <= 6, `${tag} Team mit ${s.team.length} Pokémon`);
   check(s.team.filter((m) => m.mega).length <= 1, `${tag} Team mit mehr als einer Mega-Entwicklung`);
   check(s.team.every((m) => !m.name.startsWith('Crypto-')), `${tag} Team mit Crypto-Pokémon, obwohl Crypto aus ist`);
@@ -465,7 +503,8 @@ async function testDetails(page, vp) {
         const expected = full.filter((e) => !e.attacker.shadow && !isMegaAttacker(e.attacker)).slice(0, 5).map((e) => nameOf(e.attacker));
         check(JSON.stringify(s.rows.slice(0, 5).map((r) => r.name)) === JSON.stringify(expected),
           `${tag} ${key}: Top 5 auf der Seite (${s.rows.slice(0, 5).map((r) => r.name).join(', ')}) ≠ Rechnung (${expected.join(', ')})`);
-        const megas = full.filter((e) => isMegaAttacker(e.attacker)).slice(0, boss.superMega ? 6 : 3).map((e) => nameOf(e.attacker));
+        const megas = full.filter((e) => (boss.superMega ? e.attacker.variant === 'mega' : isMegaAttacker(e.attacker)))
+          .slice(0, boss.superMega ? 6 : 3).map((e) => nameOf(e.attacker));
         check(JSON.stringify(s.megas.map((r) => r.name)) === JSON.stringify(megas),
           `${tag} ${key}: Megas auf der Seite (${s.megas.map((r) => r.name).join(', ')}) ≠ Rechnung (${megas.join(', ')})`);
       }
@@ -674,6 +713,14 @@ function testCalc() {
     check(ranking.length > 100 && ranking.every((e) => [e.dps, e.tdo, e.score].every(Number.isFinite)), `${tag} ${boss.key}: ungültige Werte in der Rangliste`);
     check(isSortedDesc(ranking.map((e) => e.score)), `${tag} ${boss.key}: Rangliste nicht sortiert`);
     check(ranking.every((e) => e.fast.type && e.charged.type), `${tag} ${boss.key}: Angreifer mit Zufallstyp-Attacke`);
+    // Super-Mega-Raid: genau eine echte Mega-Entwicklung im Team, kein Proto-Pokémon (bricht keine Schilde).
+    if (boss.superMega) {
+      const team = RaidCalc.bestTeam(ranking, 6, { requireMega: true });
+      const variants = team.map((e) => e.attacker.variant);
+      check(team.length === 6 && variants.filter((v) => v === 'mega').length === 1 && !variants.includes('primal')
+        && new Set(team.map((e) => e.attacker.speciesId)).size === 6 && isSortedDesc(team.map((e) => e.score)),
+      `${tag} ${boss.key}: Super-Mega-Team ${team.map((e) => e.attacker.key).join(', ')}`);
+    }
   }
 }
 

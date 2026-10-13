@@ -16,9 +16,10 @@ sowie die Crypto-Bosse aus 5-Sterne-Crypto-Raids. Dynamax- und Gigadynamax-Kämp
     dazunehmen. Level 30/40/50 direkt darüber; unter „Mehr Einstellungen“ Wetter, Legendäre/Mysteriöse/Ultrabestien,
     Elite-Attacken und die Attacken des Bosses, falls man sie kennt.
   - **Super-Mega-Raids:** Bosse, die (auch) als Super-Mega-Raid kommen, tragen die Marke „Super-Mega“ und oben
-    einen Hinweis (Schilde, die nur Mega-Pokémon brechen; 7 bis 10 Personen). Im Reiter „Konter“ stehen bei ihnen
-    die sechs besten Mega-Entwicklungen ganz oben, und das Team enthält genau eine. Super-Mega-Raid-Tage erscheinen
-    im Raid-Kalender, sobald Leek Duck ihren Boss nennt.
+    einen Hinweis (Schilde, die nur echte Mega-Pokémon brechen – Proto-Groudon/-Kyogre nicht; 7 bis 10 Personen),
+    samt dem, was gerade läuft (normaler Mega-Raid oder Super-Mega-Raid-Tag). Im Reiter „Konter“ stehen bei ihnen die
+    sechs besten echten Mega-Entwicklungen ganz oben, und das Team enthält genau eine. Super-Mega-Raid-Tage erscheinen
+    im Raid-Kalender, sobald Leek Duck ihren Boss nennt – auch wenn beim selben Boss gerade eine normale Raid-Woche läuft.
   - **Boss-Infos:** Fang-WP-Spannen, Wetter, Schwächen und Resistenzen, Basiswerte, KP und Zeitlimit,
     alle Attacken des Bosses.
 
@@ -48,7 +49,7 @@ Nach etwa einer Minute ist die neue Version online. Die Git-Identität ist nur f
 (`Jason-Z-tech`, noreply-Adresse von GitHub) – so erscheint keine private E-Mail-Adresse in den Commits.
 
 **Wenn sich etwas in `js/` oder `css/` geändert hat:** vor dem Push in `index.html` und `datenschutz.html` den Zusatz
-`?v=2026-10-13` an den Skript- und Stylesheet-Adressen auf das heutige Datum setzen (suchen und ersetzen;
+`?v=2026-10-13-2` an den Skript- und Stylesheet-Adressen auf das heutige Datum setzen (suchen und ersetzen;
 am selben Tag mit `-2`, `-3` … anhängen).
 Browser behalten Dateien von GitHub Pages bis zu 10 Minuten und würden sonst alte und neue Skripte mischen.
 
@@ -125,9 +126,10 @@ Zwei kleine, von Hand gepflegte Listen oben in `scripts/build-data.mjs` ergänze
 Der **Raid-Kalender** kommt von Leek Duck. Termine sind Ortszeit: Raids wechseln überall zur selben Uhrzeit vor Ort,
 deshalb vergleicht die Seite sie mit der Uhr des Geräts – ohne Umrechnung in eine Zeitzone. Läuft der Kalender aus,
 verschwindet „Jetzt im Raid“ von selbst; ein `--refresh` bringt die nächsten Wochen.
-Super-Mega-Raid-Tage („Super Mega Raid Day“) kommen dazu, sobald Leek Duck ihren Boss nennt (in den Event-Details
-oder im Titel, z. B. „Mega Gengar Super Mega Raid Day“); bis dahin meldet das Skript „Leek Duck nennt noch keinen
-Boss“.
+Super-Mega-Raid-Tage („Super Mega Raid Day“) kommen dazu, sobald Leek Duck ihren Boss im Titel nennt. Der Titel
+nennt meist nur die Art; das Skript nimmt dann die Mega-Entwicklung („Starmie Super Mega Raid Day“ → Mega-Starmie,
+„Raichu …“ → Mega-Raichu X und Y). Solange der Titel keinen Boss nennt, meldet das Skript „Leek Duck nennt noch
+keinen Boss“.
 
 ## So wird gerechnet
 

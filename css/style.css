@@ -588,7 +588,7 @@ main:focus, .boss__name:focus { outline: none; }
 .boss-tile:hover img { transform: scale(1.08); }
 .boss-tile__name { font-size: .8rem; font-weight: 700; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
 .boss-tile__meta { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 5px; }
-.boss-tile .badge { font-size: .6rem; padding: 0 5px; }
+.boss-tile .badge { max-width: 100%; font-size: .6rem; padding: 0 5px; white-space: normal; }
 .boss-tile .badge--now, .boss-tile .badge--soon { margin-top: 2px; font-size: .7rem; }
 #schedule-now .boss-tile { padding: 10px 8px 12px; }
 #schedule-now .boss-tile__name { font-size: .9rem; }
@@ -609,6 +609,7 @@ main:focus, .boss__name:focus { outline: none; }
   #schedule-now .boss-tile__name { grid-area: name; align-self: end; text-align: left; font-size: .95rem; }
   #schedule-now .boss-tile__meta { grid-area: meta; align-self: start; justify-content: flex-start; }
   #schedule-now .boss-tile .badge--now { display: none; }
+  #schedule-now .boss-tile > .badge--soon { grid-column: 2; justify-self: start; }
 }
 
 /* ---------- Detail: Boss ---------- */
