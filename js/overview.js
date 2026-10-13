@@ -29,12 +29,18 @@ const Overview = (() => {
 
   const state = { query: '' };
 
-  function bossLink(boss, { size = 'sm', extra = null, eager = false } = {}) {
+  // superMega: 'boss' = Marke "Super-Mega" für Bosse, die so kamen; 'day' = Termin ist ein Super-Mega-Raid-Tag;
+  // false = keine Marke (normale Raid-Woche eines solchen Bosses).
+  function bossLink(boss, { size = 'sm', extra = null, eager = false, superMega = boss.superMega ? 'boss' : false } = {}) {
     const pokemon = Raid.pokemon(boss.pokemon);
     return el('a', { class: 'boss-tile', href: `#boss=${boss.key}`, data: { boss: boss.key } }, [
       Raid.pokemonArt(pokemon, { size, shadow: boss.shadow, eager }),
       el('span', { class: 'boss-tile__name', text: boss.name }),
-      el('span', { class: 'boss-tile__meta' }, [Raid.categoryBadge(boss), Raid.typeDots(pokemon.types)]),
+      el('span', { class: 'boss-tile__meta' }, [
+        Raid.categoryBadge(boss),
+        superMega ? Raid.superMegaBadge(superMega === 'day' ? 'Super-Mega-Raid-Tag' : 'Super-Mega') : null,
+        Raid.typeDots(pokemon.types),
+      ]),
       extra,
     ]);
   }
@@ -58,12 +64,16 @@ const Overview = (() => {
     }
     soon.sort((a, b) => Raid.localDate(a.slot.start) - Raid.localDate(b.slot.start) || a.boss.name.localeCompare(b.boss.name, 'de'));
     document.getElementById('schedule').hidden = !now.length && !soon.length;
-    document.getElementById('schedule-now').replaceChildren(...now.map(({ boss }) => el('li', {}, [bossLink(boss, { size: 'md', extra: nowBadge(), eager: true })])));
+    // Im Kalender zählt der Termin: Marke nur, wenn er ein Super-Mega-Raid-Tag ist.
+    const superMega = (slot) => (slot.superMega ? 'day' : false);
+    document.getElementById('schedule-now').replaceChildren(...now.map(({ boss, slot }) => el('li', {}, [
+      bossLink(boss, { size: 'md', extra: nowBadge(), eager: true, superMega: superMega(slot) }),
+    ])));
     document.getElementById('schedule-now').hidden = !now.length;
     document.getElementById('schedule-soon-wrap').hidden = !soon.length;
     document.getElementById('schedule-soon-count').textContent = `(${soon.length})`;
     document.getElementById('schedule-soon').replaceChildren(...soon.map(({ boss, slot }) => el('li', {}, [
-      bossLink(boss, { extra: el('span', { class: 'badge badge--soon', text: `Ab ${Raid.formatDay(slot.start)}` }) }),
+      bossLink(boss, { extra: el('span', { class: 'badge badge--soon', text: `Ab ${Raid.formatDay(slot.start)}` }), superMega: superMega(slot) }),
     ])));
     // Die Kacheln der Raid-Arten zeigen, wie viele Bosse gerade im Raid sind.
     renderCategoryCards();

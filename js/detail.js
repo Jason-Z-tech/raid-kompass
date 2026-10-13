@@ -7,6 +7,7 @@ const Detail = (() => {
   const { el, data, formatNumber, formatFactor } = Raid;
 
   const LIST_STEP = 10;
+  const SUPER_MEGA_COUNT = 6; // so viele Mega-Entwicklungen zeigt die Liste bei Super-Mega-Bossen
   const LIST_MAX = 50;
   // Crypto-Pokémon sind standardmäßig aus: Sie sind selten und stünden sonst fast immer ganz oben.
   const DEFAULTS = { level: data?.rules.defaultLevel ?? 40, shadow: false, legendary: true, elite: true, weather: '' };
@@ -108,8 +109,11 @@ const Detail = (() => {
         el('h2', { class: 'boss__name', id: 'detail-title', tabindex: '-1', text: boss.name }),
         el('div', { class: 'boss__chips' }, [
           ...pokemon.types.map((t) => Raid.typeChip(t)),
-          when === 'now' ? el('span', { class: 'badge badge--now', text: 'Jetzt im Raid' }) : null,
-          when === 'soon' ? el('span', { class: 'badge badge--soon', text: `Im Raid ab ${Raid.formatDay(slot.start)}` }) : null,
+          when === 'now' ? el('span', { class: 'badge badge--now', text: slot.superMega ? 'Jetzt: Super-Mega-Raid-Tag' : 'Jetzt im Raid' }) : null,
+          when === 'soon'
+            ? el('span', { class: 'badge badge--soon', text: `${slot.superMega ? 'Super-Mega-Raid-Tag am' : 'Im Raid ab'} ${Raid.formatDay(slot.start)}` })
+            : null,
+          boss.superMega ? Raid.superMegaBadge('Super-Mega-Raid') : null,
           boss.schedule.some((s) => s.shiny) ? el('span', { class: 'badge badge--shiny', text: 'Schillernd möglich' }) : null,
         ]),
         el('dl', { class: 'facts facts--boss' }, [
@@ -120,6 +124,12 @@ const Detail = (() => {
         ]),
         el('p', { class: 'boss__weak' }, [el('span', { class: 'boss__weak-label', text: 'Schwach gegen' }), factorList(factors(pokemon).weak)]),
         boss.shadow ? el('p', { class: 'boss__note boss__note--shadow', text: 'Crypto-Raid: Der Boss macht und nimmt 20 % mehr Schaden (schon eingerechnet). Ab 60 % KP wird er rasend – mit 8 Erlösten Edelsteinen (höchstens 5 pro Person) bändigt ihr ihn wieder. Deshalb braucht ihr mindestens 2 Personen.' }) : null,
+        boss.superMega ? el('p', { class: 'boss__note boss__note--mega', id: 'super-mega-note' }, [
+          el('strong', { text: 'Super-Mega-Raid: ' }),
+          'Der Boss baut Schilde auf, die nur Mega-Pokémon mit einer Lade-Attacke brechen – jede Person höchstens einen. '
+            + 'Ihr braucht 7 bis 10 Personen, alle mit einem Mega-Pokémon im Team. Die Spielerzahl oben gilt für den normalen Mega-Raid; '
+            + 'unter „Konter“ stehen die besten Mega-Entwicklungen deshalb ganz oben.',
+        ]) : null,
       ]),
     ]);
   }
@@ -206,19 +216,8 @@ const Detail = (() => {
     ]);
   }
 
-  function infoNotes() {
-    const notes = [];
-    if (boss.superMega) {
-      notes.push(['boss__note boss__note--mega', 'Kam auch als Super-Mega-Raid: Dort baut der Boss Schilde auf, die nur Mega-Pokémon mit einer Lade-Attacke brechen – jede Person höchstens einen. Dafür braucht ihr 7 bis 10 Personen, alle mit einem Mega-Pokémon im Team.']);
-    }
-    return notes.map(([cls, text]) => el('p', { class: cls, text }));
-  }
-
   function infosPanel(pokemon) {
-    return [
-      ...infoNotes(),
-      el('div', { class: 'info-grid' }, [catchCard(), typeCard(pokemon), statCard(pokemon), movesCard()]),
-    ];
+    return [el('div', { class: 'info-grid' }, [catchCard(), typeCard(pokemon), statCard(pokemon), movesCard()])];
   }
 
   // ---------- Reiter "Konter": Einstellungen ----------
@@ -333,8 +332,10 @@ const Detail = (() => {
     ]);
   }
 
+  // Bei Super-Mega-Bossen gehört genau eine Mega-Entwicklung ins Team (Pflicht im Super-Mega-Raid).
   function teamSection(list) {
-    const est = RaidCalc.estimateTrainers(data, boss, list);
+    const requireMega = Boolean(boss.superMega);
+    const est = RaidCalc.estimateTrainers(data, boss, list, { requireMega });
     const tier = data.tiers[boss.tier];
     let verdict;
     if (!Number.isFinite(est.raw)) verdict = 'Mit diesen Einstellungen lässt sich keine Spielerzahl schätzen.';
@@ -348,7 +349,9 @@ const Detail = (() => {
     return el('section', { class: 'team', 'aria-labelledby': 'team-title' }, [
       el('div', { class: 'section-head' }, [
         el('h3', { class: 'section-title section-title--small', id: 'team-title', text: 'Bestes Team' }),
-        el('p', { text: 'Sechs verschiedene Pokémon für eine Person, höchstens eine Mega-Entwicklung.' }),
+        el('p', { text: requireMega
+          ? 'Sechs verschiedene Pokémon für eine Person, darunter genau eine Mega-Entwicklung (Pflicht im Super-Mega-Raid).'
+          : 'Sechs verschiedene Pokémon für eine Person, höchstens eine Mega-Entwicklung.' }),
       ]),
       el('ol', { class: 'team__members', id: 'team-members' }, est.team.map((entry) => el('li', { class: 'member' }, [
         Raid.pokemonArt(entry.attacker, { size: 'sm', shadow: entry.attacker.shadow }),
@@ -360,6 +363,7 @@ const Detail = (() => {
       el('p', { class: 'team__verdict', id: 'team-verdict' }, [
         `Eine Person schafft damit rund ${formatNumber(Math.round(est.perTrainer / 10) * 10)} Schaden in ${tier.timerS / 60} Minuten, der Boss hat ${formatNumber(tier.hp)} KP. `,
         el('strong', { text: verdict }),
+        requireMega ? ' Das gilt für den normalen Mega-Raid – im Super-Mega-Raid braucht ihr wegen der Schilde 7 bis 10 Personen.' : null,
       ]),
     ]);
   }
@@ -407,16 +411,20 @@ const Detail = (() => {
     ]);
   }
 
-  // Mega-Entwicklungen getrennt: Pro Person ist im Raid nur eine aktiv.
+  // Mega-Entwicklungen getrennt: Pro Person ist im Raid nur eine aktiv. Bei Super-Mega-Bossen stehen sie ganz
+  // oben und es sind mehr, denn dort braucht jede Person eine.
   function megaSection(megas) {
     if (!megas.length) return null;
     const top = megas[0].score;
-    return el('section', { class: 'megas', 'aria-labelledby': 'megas-title' }, [
+    const superMega = Boolean(boss.superMega);
+    return el('section', { class: `megas${superMega ? ' megas--super' : ''}`, 'aria-labelledby': 'megas-title' }, [
       el('div', { class: 'section-head' }, [
-        el('h3', { class: 'section-title section-title--small', id: 'megas-title', text: 'Beste Mega-Entwicklung' }),
-        el('p', { text: 'Pro Person ist nur eine aktiv. Sie stärkt außerdem die Attacken aller anderen im Raid (+10 %, ihres Typs +30 %).' }),
+        el('h3', { class: 'section-title section-title--small', id: 'megas-title', text: superMega ? 'Beste Mega-Entwicklungen' : 'Beste Mega-Entwicklung' }),
+        el('p', { text: superMega
+          ? 'Im Super-Mega-Raid braucht jede Person eine: Nur Mega-Pokémon brechen mit ihrer Lade-Attacke die Schilde. Sie stärkt außerdem die Attacken aller anderen (+10 %, ihres Typs +30 %).'
+          : 'Pro Person ist nur eine aktiv. Sie stärkt außerdem die Attacken aller anderen im Raid (+10 %, ihres Typs +30 %).' }),
       ]),
-      el('ol', { class: 'rows rows--compact', id: 'mega-list' }, megas.slice(0, 3).map((entry, i) => counterRow(entry, i, top, { compact: true }))),
+      el('ol', { class: 'rows rows--compact', id: 'mega-list' }, megas.slice(0, superMega ? SUPER_MEGA_COUNT : 3).map((entry, i) => counterRow(entry, i, top, { compact: true }))),
     ]);
   }
 
@@ -445,11 +453,13 @@ const Detail = (() => {
   function countersPanel(pokemon) {
     const all = ranking();
     const normal = all.filter((e) => !isMega(e.attacker));
+    const megas = megaSection(all.filter((e) => isMega(e.attacker)));
     return [
       controls(),
+      boss.superMega ? megas : null,
       all.length ? teamSection(all) : null,
       rankingSection(normal),
-      megaSection(all.filter((e) => isMega(e.attacker))),
+      boss.superMega ? null : megas,
       byTypeSection(normal, pokemon),
     ];
   }

@@ -77,13 +77,16 @@ const Raid = (() => {
 
   // Raid-Termine eines Bosses relativ zu jetzt: läuft gerade, kommt bald, oder nichts davon.
   function scheduleState(boss, now = new Date()) {
+    let current = null;
     let next = null;
     for (const s of boss.schedule) {
       const start = localDate(s.start);
       const end = s.end ? localDate(s.end) : null;
-      if (start <= now && (!end || now <= end)) return { state: 'now', slot: s };
-      if (start > now && (!next || start < localDate(next.start))) next = s;
+      // Läuft während einer Raid-Woche ein Super-Mega-Raid-Tag, zählt der Tag.
+      if (start <= now && (!end || now <= end)) { if (!current || s.superMega) current = s; }
+      else if (start > now && (!next || start < localDate(next.start))) next = s;
     }
+    if (current) return { state: 'now', slot: current };
     return next ? { state: 'soon', slot: next } : { state: null, slot: null };
   }
 
@@ -110,6 +113,11 @@ const Raid = (() => {
     if (attacker.variant === 'mega') badges.push(el('span', { class: 'badge badge--mega', text: 'Mega' }));
     if (attacker.variant === 'primal') badges.push(el('span', { class: 'badge badge--primal', text: 'Proto' }));
     return badges;
+  }
+
+  // Super-Mega-Raid: "Super-Mega" an Bossen, die so kamen; "Super-Mega-Raid-Tag" für einen Termin.
+  function superMegaBadge(text = 'Super-Mega') {
+    return el('span', { class: 'badge badge--super', text, title: 'Super-Mega-Raid: Schilde, die nur Mega-Pokémon brechen' });
   }
 
   function eliteBadge(text = 'Elite-TM') {
@@ -193,7 +201,7 @@ const Raid = (() => {
   return {
     data, ready, bossByKey, TYPE_ORDER, CATEGORIES,
     el, formatNumber, formatFactor, slugOf, normalize, localDate, formatDay, formatDate, scheduleState,
-    typeChip, typeDots, categoryBadge, attackerBadges, eliteBadge, attackerName, pokemonArt, meter,
+    typeChip, typeDots, categoryBadge, superMegaBadge, attackerBadges, eliteBadge, attackerName, pokemonArt, meter,
     enhanceScroller, renderSources,
     boss: (key) => bossByKey.get(key) ?? null,
     pokemon: (key) => data.pokemonByKey[key],

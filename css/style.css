@@ -363,6 +363,7 @@ main:focus, .boss__name:focus { outline: none; }
 .badge--elite { --b: var(--ultra); }
 .badge--now { --b: var(--now); }
 .badge--shiny { --b: var(--gold); }
+.badge--super { --b: var(--accent); }
 /* Datum ist ein ganzes Wort statt Kürzel: normale Schreibung, darf umbrechen. */
 .badge--soon { --b: var(--muted); border-style: dashed; text-transform: none; letter-spacing: .02em; white-space: normal; }
 

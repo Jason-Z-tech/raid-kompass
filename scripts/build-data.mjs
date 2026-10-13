@@ -611,13 +611,29 @@ function makeNameResolver(pokemon, textsEn) {
 // Tagesgenaue Zeitpunkte als Ortszeit ("2026-09-30T06:00"): Raids wechseln überall zur selben Ortszeit.
 const localTime = (iso) => (iso ? iso.slice(0, 16) : null);
 
+// Boss-Namen eines Super-Mega-Raid-Tags: aus den Event-Details oder – solange Leek Duck dort nichts einträgt –
+// aus dem Titel, z. B. "Mega Gengar Super Mega Raid Day" oder "Mega Raichu X and Mega Raichu Y Super Mega Raid Day".
+// Ein Titel ohne Boss ("Super Mega Raid Day") heißt: Der Boss ist noch nicht bekannt.
+function superMegaDayBosses(ev) {
+  if (ev.extraData?.raidbattles?.bosses?.length) return ev.extraData.raidbattles.bosses;
+  const prefix = /^(.*?)\s*Super Mega Raid Day/i.exec(ev.name)?.[1]?.trim();
+  if (!prefix) return [];
+  return prefix.split(/,\s*(?:and\s+)?|\s+and\s+/).filter(Boolean).map((name) => ({ name, canBeShiny: false }));
+}
+
 function applySchedule(bosses, events, currentRaids, resolve, hints) {
   const byKey = new Map(bosses.map((b) => [b.key, b]));
   const scheduled = new Set();
   for (const ev of events) {
-    if (ev.eventType !== 'raid-battles' || !ev.extraData?.raidbattles?.bosses?.length) continue;
+    const superMegaDay = ev.eventType === 'raid-day' && /super mega raid day/i.test(ev.name);
+    if (ev.eventType !== 'raid-battles' && !superMegaDay) continue;
+    const eventBosses = superMegaDay ? superMegaDayBosses(ev) : ev.extraData?.raidbattles?.bosses ?? [];
+    if (superMegaDay && !eventBosses.length) {
+      hints.push(`Super-Mega-Raid-Tag am ${localTime(ev.start).slice(0, 10)}: Leek Duck nennt noch keinen Boss – später neu bauen.`);
+      continue;
+    }
     const shadowEvent = /shadow raid/i.test(ev.name);
-    for (const b of ev.extraData.raidbattles.bosses) {
+    for (const b of eventBosses) {
       const entry = resolve(b.name);
       if (!entry) { hints.push(`Raid-Kalender: "${b.name}" (${ev.name}) keinem Pokémon zugeordnet.`); continue; }
       const key = shadowEvent ? `crypto-${entry.key}` : entry.key;
@@ -627,7 +643,14 @@ function applySchedule(bosses, events, currentRaids, resolve, hints) {
         if (entry.class || entry.variant !== 'normal') hints.push(`Raid-Kalender: ${b.name} (${ev.name}) ist kein Boss auf der Seite – NOT_RAID_BOSSES prüfen.`);
         continue;
       }
-      boss.schedule.push({ start: localTime(ev.start), end: localTime(ev.end), shiny: Boolean(b.canBeShiny) });
+      const slot = { start: localTime(ev.start), end: localTime(ev.end), shiny: Boolean(b.canBeShiny) };
+      if (superMegaDay) {
+        slot.superMega = true;
+        // Der Kalender vergisst das Event, sobald es vorbei ist – der Hinweis auf der Boss-Seite soll bleiben.
+        if (!boss.superMega) hints.push(`${boss.name} kommt als Super-Mega-Raid (${slot.start.slice(0, 10)}) – in SUPER_MEGA eintragen.`);
+        boss.superMega = true;
+      }
+      boss.schedule.push(slot);
       scheduled.add(key);
     }
   }

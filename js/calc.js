@@ -230,20 +230,23 @@ const RaidCalc = (() => {
 
   // Team für eine Person: die besten Pokémon verschiedener Arten, höchstens eine Mega-Entwicklung
   // (im Raid kann pro Person nur eine aktiv sein).
-  function bestTeam(ranking, size = 6) {
-    const team = [];
-    const species = new Set();
-    let megaUsed = false;
+  // requireMega: Im Super-Mega-Raid braucht jede Person ein Mega-Pokémon – dann ist das beste immer dabei.
+  function bestTeam(ranking, size = 6, { requireMega = false } = {}) {
+    const isMega = (a) => a.variant === 'mega' || a.variant === 'primal';
+    const forced = requireMega ? ranking.find((e) => isMega(e.attacker)) : null;
+    const team = forced ? [forced] : [];
+    const species = new Set(forced ? [forced.attacker.speciesId] : []);
+    let megaUsed = Boolean(forced);
     for (const entry of ranking) {
       if (team.length === size) break;
       const a = entry.attacker;
-      const isMega = a.variant === 'mega' || a.variant === 'primal';
-      if (species.has(a.speciesId) || (isMega && megaUsed)) continue;
+      if (species.has(a.speciesId) || (isMega(a) && megaUsed)) continue;
       species.add(a.speciesId);
-      if (isMega) megaUsed = true;
+      if (isMega(a)) megaUsed = true;
       team.push(entry);
     }
-    return team;
+    // In der Reihenfolge der Rangliste, auch wenn die Mega-Entwicklung vorweg genommen wurde.
+    return forced ? team.sort((x, y) => ranking.indexOf(x) - ranking.indexOf(y)) : team;
   }
 
   // Schaden, den eine Person mit ihrem Team in der Raid-Zeit schafft: Pokémon kämpfen nacheinander,
@@ -268,9 +271,9 @@ const RaidCalc = (() => {
 
   // raw = KP des Bosses ÷ Schaden einer Person; trainers berücksichtigt zusätzlich die Mindestzahl der
   // Raid-Art (Crypto-Raids: 8 Erlöste Edelsteine, höchstens 5 pro Person → mindestens 2 Personen).
-  function estimateTrainers(data, boss, ranking) {
+  function estimateTrainers(data, boss, ranking, teamOptions = {}) {
     const tier = data.tiers[boss.tier];
-    const team = bestTeam(ranking);
+    const team = bestTeam(ranking, 6, teamOptions);
     const perTrainer = damagePerTrainer(data, team, tier.timerS);
     const raw = perTrainer > 0 ? tier.hp / perTrainer : Infinity;
     const minTrainers = tier.minTrainers ?? 1;

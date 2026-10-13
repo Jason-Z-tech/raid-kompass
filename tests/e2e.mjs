@@ -96,6 +96,7 @@ const startState = (page) => page.eval(`(() => ({
   scheduleVisible: !document.getElementById('schedule').hidden,
   now: [...document.querySelectorAll('#schedule-now .boss-tile')].map((a) => a.dataset.boss),
   soon: [...document.querySelectorAll('#schedule-soon .boss-tile')].map((a) => ({ key: a.dataset.boss, badge: a.querySelector('.badge--soon')?.textContent })),
+  superDay: [...document.querySelectorAll('#schedule .boss-tile')].filter((a) => a.querySelector('.badge--super')).map((a) => a.dataset.boss),
   soonCount: document.getElementById('schedule-soon-count').textContent,
   soonOpen: document.getElementById('schedule-soon-wrap').open,
   clearVisible: !document.getElementById('search-clear').hidden,
@@ -108,6 +109,7 @@ const categoryState = (page) => page.eval(`(() => ({
   title: document.getElementById('category-title')?.textContent,
   count: document.getElementById('category-count')?.textContent,
   tiles: [...document.querySelectorAll('#category-grid-list > li')].map((li) => li.dataset.boss),
+  superTiles: [...document.querySelectorAll('#category-grid-list .boss-tile')].filter((a) => a.querySelector('.badge--super')?.textContent === 'Super-Mega').map((a) => a.dataset.boss),
   focused: document.activeElement?.id,
   docTitle: document.title,
   overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
@@ -128,6 +130,9 @@ const detailState = (page) => page.eval(`(() => {
     visible: !document.getElementById('view-detail').hidden,
     title: document.getElementById('detail-title')?.textContent,
     back: document.getElementById('back')?.textContent,
+    superNote: !!document.getElementById('super-mega-note'),
+    chips: [...document.querySelectorAll('.boss__chips .badge')].map((b) => b.textContent),
+    sections: [...document.querySelectorAll('#tab-panel > section, #tab-panel > details')].map((x) => x.className.split(' ')[0]),
     label: document.querySelector('.boss__label')?.textContent,
     facts,
     cpRows,
@@ -200,6 +205,9 @@ async function testStart(page, vp) {
     check(c.visible && c.title === GROUP_HEADINGS[g], `${ctag} Überschrift "${c.title}"`);
     check(c.tiles.length === expected.length && c.tiles.every((k) => expected.includes(k)), `${ctag} ${c.tiles.length} Kacheln statt ${expected.length} (fremd: ${c.tiles.filter((k) => !expected.includes(k)).join(', ')})`);
     check(c.count.startsWith(`${expected.length} Bosse`), `${ctag} Text "${c.count}"`);
+    const superExpected = expected.filter((k) => DATA.bosses.find((b) => b.key === k).superMega);
+    check(JSON.stringify([...c.superTiles].sort()) === JSON.stringify([...superExpected].sort()),
+      `${ctag} Marke "Super-Mega" bei ${c.superTiles.join(', ') || 'keinem'}, erwartet ${superExpected.join(', ') || 'keinem'}`);
     check(c.focused === 'category-title' && c.docTitle.startsWith(GROUP_HEADINGS[g]), `${ctag} Fokus ${c.focused}, Fenstertitel "${c.docTitle}"`);
     check(!c.overflow, `${ctag} Seite ist breiter als der Bildschirm`);
     if (vp.every === 1) {
@@ -250,6 +258,7 @@ const pad2 = (n) => String(n).padStart(2, '0');
 function slotsAt(when) {
   const now = [];
   const soon = [];
+  const superDay = [];
   const t = (text) => {
     const [d, time] = text.split('T');
     const [y, m, day] = d.split('-').map(Number);
@@ -259,16 +268,18 @@ function slotsAt(when) {
   const [d, time] = when.split('T');
   const nowT = t(`${d}T${time}`);
   for (const boss of DATA.bosses) {
-    let active = false;
+    let active = null;
     let next = null;
     for (const s of boss.schedule) {
-      if (t(s.start) <= nowT && (!s.end || nowT <= t(s.end))) active = true;
+      // Läuft gleichzeitig ein Super-Mega-Raid-Tag, zählt der.
+      if (t(s.start) <= nowT && (!s.end || nowT <= t(s.end))) { if (!active || s.superMega) active = s; }
       else if (t(s.start) > nowT && (!next || t(s.start) < t(next.start))) next = s;
     }
     if (active) now.push(boss.key);
     else if (next) soon.push({ key: boss.key, start: next.start });
+    if ((active ?? next)?.superMega) superDay.push(boss.key);
   }
-  return { now, soon };
+  return { now, soon, superDay };
 }
 
 async function testSchedule(page, vp) {
@@ -296,6 +307,9 @@ async function testSchedule(page, vp) {
     check(JSON.stringify(s.soon.map((x) => x.key).sort()) === JSON.stringify(expected.soon.map((x) => x.key).sort()),
       `${tag} ${when}: "Demnächst" zeigt ${s.soon.map((x) => x.key).join(', ')}, erwartet ${expected.soon.map((x) => x.key).join(', ')}`);
     check(!expected.soon.length || s.soonCount === `(${expected.soon.length})`, `${tag} ${when}: "Demnächst" zählt ${s.soonCount}`);
+    // Marke "Super-Mega-Raid-Tag" genau bei Terminen, die einer sind – nicht bei normalen Raid-Wochen.
+    check(JSON.stringify([...s.superDay].sort()) === JSON.stringify([...expected.superDay].sort()),
+      `${tag} ${when}: Super-Mega-Raid-Tag bei ${s.superDay.join(', ') || 'keinem'}, erwartet ${expected.superDay.join(', ') || 'keinem'}`);
     check(s.scheduleVisible === Boolean(expected.now.length || expected.soon.length), `${tag} ${when}: Kalender-Bereich falsch ein-/ausgeblendet`);
     // Die Kacheln der Raid-Arten zählen, wie viele ihrer Bosse gerade im Raid sind.
     for (const c of s.cards) {
@@ -330,6 +344,45 @@ async function testSchedule(page, vp) {
   await page.setToday(null);
 }
 
+// ---------- Super-Mega-Raid-Tage ----------
+
+// Die echten Daten nennen nicht immer einen Super-Mega-Raid-Tag. Deshalb stellt der Test zwei Termine im
+// Browser nach: einer läuft gerade (mitten in einer normalen Raid-Woche desselben Bosses), einer ist in zwei Tagen.
+async function testSuperMegaDay(page, vp) {
+  const tag = `[${vp.label} · Super-Mega-Raid-Tag]`;
+  console.log(`${tag} läuft …`);
+  const [nowKey, soonKey] = DATA.bosses.filter((b) => b.superMega).map((b) => b.key);
+  await page.goto(url('index.html'));
+  await page.eval(`(() => {
+    const pad = (n) => String(n).padStart(2, '0');
+    const at = (hours) => {
+      const d = new Date(Date.now() + hours * 3600e3);
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    };
+    const boss = (key) => window.RAID_DATA.bosses.find((b) => b.key === key);
+    boss(${JSON.stringify(nowKey)}).schedule = [{ start: at(-48), end: at(48), shiny: false }, { start: at(-1), end: at(2), shiny: false, superMega: true }];
+    boss(${JSON.stringify(soonKey)}).schedule = [{ start: at(48), end: at(51), shiny: false, superMega: true }];
+    Overview.refreshSchedule();
+  })()`);
+  const s = await startState(page);
+  check(s.now.includes(nowKey) && s.soon.some((x) => x.key === soonKey), `${tag} nachgestellte Termine fehlen im Kalender`);
+  check(JSON.stringify([...s.superDay].sort()) === JSON.stringify([nowKey, soonKey].sort()), `${tag} Marke bei ${s.superDay.join(', ')}`);
+  const texts = await page.eval(`[...document.querySelectorAll('#schedule .badge--super')].map((b) => b.textContent)`);
+  check(texts.length === 2 && texts.every((x) => x === 'Super-Mega-Raid-Tag'), `${tag} Marken im Kalender: ${texts.join(', ')}`);
+  check(!s.overflow, `${tag} Seite ist breiter als der Bildschirm`);
+
+  // Boss-Seiten nennen den Termin im Kopf.
+  await page.click(`#schedule-now a[data-boss="${nowKey}"]`);
+  let d = await detailState(page);
+  check(d.chips.includes('Jetzt: Super-Mega-Raid-Tag') && d.superNote, `${tag} ${nowKey}: Kopf zeigt ${d.chips.join(', ')}`);
+  await page.click('#back');
+  await sleep(150);
+  await page.click('#schedule-soon-wrap > summary');
+  await page.click(`#schedule-soon a[data-boss="${soonKey}"]`);
+  d = await detailState(page);
+  check(d.chips.some((x) => /^Super-Mega-Raid-Tag am \d+\. \p{L}+/u.test(x)) && d.superNote, `${tag} ${soonKey}: Kopf zeigt ${d.chips.join(', ')}`);
+}
+
 // ---------- Boss-Seiten ----------
 
 async function checkDetail(page, s, boss, tag, { infos }) {
@@ -345,7 +398,14 @@ async function checkDetail(page, s, boss, tag, { infos }) {
   check(isSortedDesc(s.rows.map((r) => r.score)), `${tag} Konter nicht nach Wertung sortiert`);
   // Grundeinstellung: ohne Crypto-Pokémon, Mega-Entwicklungen nur in ihrer eigenen Liste.
   check(s.rows.every((r) => !r.shadow && !r.mega), `${tag} Liste enthält Crypto- oder Mega-Pokémon`);
-  check(s.megas.length > 0 && s.megas.length <= 3 && s.megas.every((r) => r.mega), `${tag} ${s.megas.length} Einträge in "Beste Mega-Entwicklung"`);
+  const megaCount = boss.superMega ? 6 : 3;
+  check(s.megas.length > 0 && s.megas.length <= megaCount && s.megas.every((r) => r.mega), `${tag} ${s.megas.length} Einträge in "Beste Mega-Entwicklung"`);
+  // Super-Mega-Bosse: Hinweis im Kopf, Marke, Mega-Liste vor dem Team und genau eine Mega-Entwicklung im Team.
+  check(s.superNote === Boolean(boss.superMega) && s.chips.includes('Super-Mega-Raid') === Boolean(boss.superMega),
+    `${tag} Super-Mega-Hinweis/-Marke ${s.superNote ? 'da' : 'fehlt'}, erwartet ${boss.superMega ? 'da' : 'nicht da'}`);
+  const order = s.sections.filter((x) => x === 'megas' || x === 'team');
+  check(JSON.stringify(order) === JSON.stringify(boss.superMega ? ['megas', 'team'] : ['team', 'megas']), `${tag} Reihenfolge ${order.join(' → ')}`);
+  if (boss.superMega) check(s.team.filter((m) => m.mega).length === 1, `${tag} Super-Mega-Boss: Team ohne genau eine Mega-Entwicklung`);
   check(s.team.length > 0 && s.team.length <= 6, `${tag} Team mit ${s.team.length} Pokémon`);
   check(s.team.filter((m) => m.mega).length <= 1, `${tag} Team mit mehr als einer Mega-Entwicklung`);
   check(s.team.every((m) => !m.name.startsWith('Crypto-')), `${tag} Team mit Crypto-Pokémon, obwohl Crypto aus ist`);
@@ -361,7 +421,7 @@ async function checkDetail(page, s, boss, tag, { infos }) {
   const crowd = lo === hi ? (lo <= 1 ? 'allein' : `${lo} Personen`) : `${lo}–${hi} Personen`;
   check(s.facts['Spieler*innen'] === crowd, `${tag} Spieler*innen "${s.facts['Spieler*innen']}" statt "${crowd}"`);
   // Das Urteil unter dem Team gilt für die aktuelle Einstellung (ohne Crypto).
-  const current = RaidCalc.estimateTrainers(DATA, boss, full.filter((e) => !e.attacker.shadow));
+  const current = RaidCalc.estimateTrainers(DATA, boss, full.filter((e) => !e.attacker.shadow), { requireMega: Boolean(boss.superMega) });
   if (boss.shadow) check(lo >= 2 && !/allein/.test(s.verdict), `${tag} Crypto-Raid mit weniger als 2 Personen: "${s.verdict}"`);
   else if (current.raw > 1) check(s.verdictStrong.includes(`mindestens ${Math.ceil(current.raw - 1e-9)} Personen`), `${tag} Urteil "${s.verdictStrong}" passt nicht zu ${current.raw.toFixed(2)}`);
   else check(/allein/.test(s.verdictStrong), `${tag} Urteil "${s.verdictStrong}" sollte "allein" nennen (${current.raw.toFixed(2)})`);
@@ -405,7 +465,7 @@ async function testDetails(page, vp) {
         const expected = full.filter((e) => !e.attacker.shadow && !isMegaAttacker(e.attacker)).slice(0, 5).map((e) => nameOf(e.attacker));
         check(JSON.stringify(s.rows.slice(0, 5).map((r) => r.name)) === JSON.stringify(expected),
           `${tag} ${key}: Top 5 auf der Seite (${s.rows.slice(0, 5).map((r) => r.name).join(', ')}) ≠ Rechnung (${expected.join(', ')})`);
-        const megas = full.filter((e) => isMegaAttacker(e.attacker)).slice(0, 3).map((e) => nameOf(e.attacker));
+        const megas = full.filter((e) => isMegaAttacker(e.attacker)).slice(0, boss.superMega ? 6 : 3).map((e) => nameOf(e.attacker));
         check(JSON.stringify(s.megas.map((r) => r.name)) === JSON.stringify(megas),
           `${tag} ${key}: Megas auf der Seite (${s.megas.map((r) => r.name).join(', ')}) ≠ Rechnung (${megas.join(', ')})`);
       }
@@ -624,6 +684,7 @@ for (const vp of VIEWPORTS) {
   try {
     await testStart(page, vp);
     await testSchedule(page, vp);
+    await testSuperMegaDay(page, vp);
     await testDetails(page, vp);
     await testFilters(page, vp);
     await testLegal(page, vp);
