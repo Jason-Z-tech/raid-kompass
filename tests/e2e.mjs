@@ -81,19 +81,20 @@ const nameOf = (a) => (a.shadow ? `Crypto-${a.name}` : a.name);
 const usesEliteEntry = (e) => [e.fast.id, e.charged.id].some((id) => e.attacker.eliteFast.includes(id) || e.attacker.eliteCharged.includes(id));
 const pct = (x) => (x * 100).toLocaleString('de-CH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 // Erwartete Elite-Zeile unter einer Konter-Zeile (unabhängig von der Seite gerechnet): "list" ist die gezeigte Liste,
-// "other" dieselbe Liste mit umgekehrtem Elite-Schalter.
-function expectedEliteLine(entry, list, other, eliteOn) {
+// "other" dieselbe Liste mit umgekehrtem Elite-Schalter. Gesucht wird dieselbe Form (normal oder Crypto); der Platz
+// ist der in der gezeigten Liste, wenn nur dieses Pokémon seine Elite-Attacke abgibt (bzw. bekommt).
+function expectedEliteLine(entry, list, other, eliteOn, okRank = 10) {
   const top = list[0].score;
-  const i = other.findIndex((e) => e.attacker.key === entry.attacker.key);
-  const o = other[i];
+  const o = other.find((e) => e.attacker.key === entry.attacker.key && Boolean(e.attacker.shadow) === Boolean(entry.attacker.shadow));
   const pair = (e) => `${e.fast.name} + ${e.charged.name}`;
+  const rank = (x) => 1 + list.filter((y) => y !== entry && y.score > x.score).length;
   if (eliteOn) {
     if (!usesEliteEntry(entry)) return null;
     if (!o) return 'Ohne Elite-TM: keine passenden Attacken';
-    return `Ohne Elite-TM: ${pair(o)} · ${pct(o.score / top)} % · Platz ${i + 1}${i + 1 <= 10 ? ' – lohnt sich auch so' : ''}`;
+    return `Ohne Elite-TM: ${pair(o)} · ${pct(o.score / top)} % · Platz ${rank(o)}${rank(o) <= okRank ? ' – lohnt sich auch so' : ''}`;
   }
   if (!o || !usesEliteEntry(o) || o.score <= entry.score * 1.005) return null;
-  return `Mit Elite-TM: ${pair(o)} · ${pct(o.score / top)} % · Platz ${i + 1}`;
+  return `Mit Elite-TM: ${pair(o)} · ${pct(o.score / top)} % · Platz ${rank(o)}`;
 }
 
 // ---------- Zustand der Seite auslesen ----------
@@ -593,6 +594,29 @@ async function testFilters(page, vp) {
     await page.click('label.toggle:has(#toggle-elite)');
     s = await detailState(page);
     check(s.toggles['toggle-elite'] && !s.reset, `${tag} Elite lässt sich nicht wieder einschalten`);
+
+    // Mit Crypto an: Crypto-Formen bekommen ihre eigenen Zahlen (nicht die der normalen Form); auch die Mega-Liste
+    // (3 gezeigt, "lohnt sich auch so" nur bis Platz 3).
+    await page.goto(url('index.html', '#boss=mewtwo'));
+    await page.click('label.toggle:has(#toggle-shadow)');
+    const mewtwo = DATA.bosses.find((b) => b.key === 'mewtwo');
+    const allOn = RaidCalc.rank(DATA, mewtwo, RANK_ALL);
+    const allOff = RaidCalc.rank(DATA, mewtwo, { ...RANK_ALL, elite: false });
+    const nOn = allOn.filter((e) => !isMegaAttacker(e.attacker));
+    const nOff = allOff.filter((e) => !isMegaAttacker(e.attacker));
+    const mOn = allOn.filter((e) => isMegaAttacker(e.attacker));
+    const mOff = allOff.filter((e) => isMegaAttacker(e.attacker));
+    for (const eliteOn of [true, false]) {
+      if (!eliteOn) await page.click('label.toggle:has(#toggle-elite)');
+      s = await detailState(page);
+      const [list, other, mList, mOther] = eliteOn ? [nOn, nOff, mOn, mOff] : [nOff, nOn, mOff, mOn];
+      const wrong = s.rows.filter((r, i) => r.name !== nameOf(list[i].attacker) || r.alt !== expectedEliteLine(list[i], list, other, eliteOn));
+      const wrongMega = s.megas.filter((r, i) => r.alt !== expectedEliteLine(mList[i], mList, mOther, eliteOn, 3));
+      check(s.rows.some((r) => r.shadow && r.alt) && wrong.length === 0 && wrongMega.length === 0,
+        `${tag} Crypto an, Elite ${eliteOn ? 'an' : 'aus'}: falsche Elite-Zeilen bei ${[...wrong, ...wrongMega].map((r) => `${r.name}: "${r.alt}"`).join(' | ') || '(keine Crypto-Zeile mit Elite-Zeile)'}`);
+    }
+    await page.goto(url('index.html', '#boss=xerneas'));
+    s = await detailState(page);
   }
 
   // Mehr Einstellungen: Legendäre und Elite aus.
@@ -758,6 +782,10 @@ function testCalc() {
     check(ranking.length > 100 && ranking.every((e) => [e.dps, e.tdo, e.score].every(Number.isFinite)), `${tag} ${boss.key}: ungültige Werte in der Rangliste`);
     check(isSortedDesc(ranking.map((e) => e.score)), `${tag} ${boss.key}: Rangliste nicht sortiert`);
     check(ranking.every((e) => e.fast.type && e.charged.type), `${tag} ${boss.key}: Angreifer mit Zufallstyp-Attacke`);
+    // Die Liste ohne Elite-Attacken, die rank() mit elite: true gleich mitliefert, ist genau die von elite: false.
+    const plain = RaidCalc.rank(DATA, boss, { ...RANK_ALL, elite: false });
+    const sig = (list) => JSON.stringify(list.map((e) => [e.attacker.key, Boolean(e.attacker.shadow), e.fast.id, e.charged.id, e.score]));
+    check(sig(ranking.plain) === sig(plain), `${tag} ${boss.key}: Liste ohne Elite-Attacken weicht ab`);
     // Super-Mega-Raid: genau eine echte Mega-Entwicklung im Team, kein Proto-Pokémon (bricht keine Schilde).
     if (boss.superMega) {
       const team = RaidCalc.bestTeam(ranking, 6, { requireMega: true });

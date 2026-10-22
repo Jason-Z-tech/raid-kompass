@@ -203,26 +203,35 @@ const RaidCalc = (() => {
 
   // Rangliste: Für jedes Pokémon das beste Attacken-Paar gegen diesen Boss.
   // opts: { level, shadow, mega, legendary, elite, weather, bossFast, bossCharged }
+  // Mit opts.elite trägt das Ergebnis zusätzlich .plain: dieselbe Rangliste ohne Elite-Attacken, aus derselben
+  // Rechnung (die Paare ohne Elite-Attacke kommen in derselben Reihenfolge vor wie bei elite: false).
   function rank(data, boss, opts) {
     const bossStat = bossStats(data, boss);
     const movesets = bossMovesets(data, boss, opts);
     const factors = typeFactors(data, boss, opts);
     const results = [];
+    const plainResults = [];
     for (const attacker of attackerVariants(data, opts)) {
       // Kraftreserve fällt weg: Ihr Typ ist Zufall, man kann sie nicht gezielt einsetzen.
       const fastMoves = movesFor(data, opts.elite ? [...attacker.fast, ...attacker.eliteFast] : attacker.fast).filter((m) => m.type);
       const chargedMoves = movesFor(data, opts.elite ? [...attacker.charged, ...attacker.eliteCharged] : attacker.charged).filter((m) => m.type);
       const hits = bossHits(data, boss, bossStat, movesets, attacker, opts);
       let best = null;
+      let plain = null;
       for (const fast of fastMoves) {
         for (const charged of chargedMoves) {
           const perf = attackerPerformance(data, attacker, fast, charged, bossStat, hits, factors);
           if (!best || perf.score > best.score) best = { ...perf, fast, charged };
+          if (opts.elite && attacker.fast.includes(fast.id) && attacker.charged.includes(charged.id) && (!plain || perf.score > plain.score)) {
+            plain = { ...perf, fast, charged };
+          }
         }
       }
       if (best) results.push({ attacker, ...best });
+      if (plain) plainResults.push({ attacker, ...plain });
     }
     results.sort((x, y) => y.score - x.score);
+    if (opts.elite) results.plain = plainResults.sort((x, y) => y.score - x.score);
     return results;
   }
 

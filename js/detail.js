@@ -25,18 +25,21 @@ const Detail = (() => {
   // ---------- Rechnung ----------
 
   // Die volle Rangliste (alle Varianten) hängt nur von Level, Elite, Wetter und Boss-Attacken ab –
-  // die Schalter für Crypto und Legendäre filtern sie nur. So bleibt jeder Klick schnell.
+  // die Schalter für Crypto und Legendäre filtern sie nur. So bleibt jeder Klick schnell. Eine Rechnung liefert
+  // beide Listen, mit und ohne Elite-Attacken (für die Zeilen "Ohne/Mit Elite-TM").
   function fullRanking(opts = state) {
-    const key = [boss.key, opts.level, opts.elite, opts.weather, opts.bossFast, opts.bossCharged].join('|');
-    if (!cache.has(key)) {
+    const key = (elite) => [boss.key, opts.level, elite, opts.weather, opts.bossFast, opts.bossCharged].join('|');
+    if (!cache.has(key(opts.elite))) {
       if (cache.size > 40) cache.clear();
-      cache.set(key, RaidCalc.rank(data, boss, {
-        level: opts.level, elite: opts.elite, weather: opts.weather || null,
+      const withElite = RaidCalc.rank(data, boss, {
+        level: opts.level, elite: true, weather: opts.weather || null,
         bossFast: opts.bossFast || null, bossCharged: opts.bossCharged || null,
         shadow: true, mega: true, legendary: true,
-      }));
+      });
+      cache.set(key(true), withElite);
+      cache.set(key(false), withElite.plain);
     }
-    return cache.get(key);
+    return cache.get(key(opts.elite));
   }
 
   const isMega = (attacker) => attacker.variant === 'mega' || attacker.variant === 'primal';
@@ -373,7 +376,10 @@ const Detail = (() => {
         Raid.pokemonArt(entry.attacker, { size: 'sm', shadow: entry.attacker.shadow }),
         el('div', { class: 'member__info' }, [
           el('p', { class: 'member__name' }, [el('span', { text: Raid.attackerName(entry.attacker) }), ...Raid.attackerBadges(entry.attacker)]),
-          el('p', { class: 'member__moves' }, [`${entry.fast.name} + ${entry.charged.name}`, usesElite(entry) ? Raid.eliteBadge() : null]),
+          el('p', { class: 'member__moves' }, [
+            entry.fast.name, isElite(entry.attacker, entry.fast.id) ? Raid.eliteBadge() : null,
+            ' + ', entry.charged.name, isElite(entry.attacker, entry.charged.id) ? Raid.eliteBadge() : null,
+          ]),
         ]),
       ]))),
       el('p', { class: 'team__verdict', id: 'team-verdict' }, [
@@ -384,38 +390,44 @@ const Detail = (() => {
     ]);
   }
 
-  // Gegenstück zur gezeigten Liste mit umgekehrtem Elite-Schalter: Wie stünde jedes Pokémon ohne (bzw. mit)
-  // Elite-TM? Schlüssel: Angreifer, Wert: sein bester Eintrag dort und sein Platz in dieser Liste.
+  // Crypto- und normale Form desselben Pokémon haben denselben Schlüssel – hier zählt die Form mit.
+  const variantKey = (a) => `${a.key}|${a.shadow ? 'crypto' : ''}`;
+
+  // Gegenstück zur gezeigten Liste mit umgekehrtem Elite-Schalter: bester Eintrag jedes Pokémon ohne (bzw. mit)
+  // Elite-Attacken.
   function eliteCounterpart(filter) {
     const list = fullRanking({ ...state, elite: !state.elite }).filter((e) => passes(e, state) && filter(e));
-    return new Map(list.map((e, i) => [e.attacker.key, { entry: e, rank: i + 1 }]));
+    return new Map(list.map((e) => [variantKey(e.attacker), e]));
   }
 
   // Zeile unter den Attacken. Elite an: Nutzt der Konter eine Elite-Attacke, steht hier sein bestes Paar ohne
-  // Elite-TM – in derselben Wertung wie die Liste und mit dem Platz, den er ohne hätte. Elite aus: das bessere
-  // Paar mit Elite-TM, falls es eines gibt. So sieht man, ob sich die Elite-TM lohnt.
-  function eliteLine(entry, top, alt) {
-    const other = alt.get(entry.attacker.key);
+  // Elite-TM. Elite aus: sein besseres Paar mit Elite-TM, falls es eines gibt. Wertung und Platz beziehen sich auf
+  // die gezeigte Liste – so stünde er dort, wenn nur er die Elite-Attacke abgibt (bzw. bekommt). "Lohnt sich auch
+  // so", wenn er damit noch unter den gezeigten Plätzen ist (okRank). So sieht man, ob sich die Elite-TM lohnt.
+  function eliteLine(entry, top, { alt, list, okRank }) {
+    const other = alt.get(variantKey(entry.attacker));
     const pair = (e) => `${e.fast.name} + ${e.charged.name}`;
-    const value = (o) => `${formatNumber((o.entry.score / top) * 100)} % · Platz ${o.rank}`;
+    const rank = (o) => 1 + list.filter((x) => x !== entry && x.score > o.score).length;
+    const value = (o) => el('span', { class: 'row__alt-value', text: `${formatNumber((o.score / top) * 100)} % · Platz ${rank(o)}` });
     if (state.elite) {
       if (!usesElite(entry)) return null;
       if (!other) return el('p', { class: 'row__alt' }, [el('span', { class: 'row__alt-label', text: 'Ohne Elite-TM: ' }), 'keine passenden Attacken']);
-      const strong = other.rank <= LIST_STEP;
+      const strong = rank(other) <= okRank;
       return el('p', { class: `row__alt${strong ? ' row__alt--ok' : ''}` }, [
         el('span', { class: 'row__alt-label', text: 'Ohne Elite-TM: ' }),
-        `${pair(other.entry)} · ${value(other)}`,
+        `${pair(other)} · `, value(other),
         strong ? el('strong', { text: ' – lohnt sich auch so' }) : null,
       ]);
     }
-    if (!other || !usesElite(other.entry) || other.entry.score <= entry.score * 1.005) return null;
+    if (!other || !usesElite(other) || other.score <= entry.score * 1.005) return null;
     return el('p', { class: 'row__alt row__alt--gain' }, [
       el('span', { class: 'row__alt-label', text: 'Mit Elite-TM: ' }),
-      `${pair(other.entry)} · ${value(other)}`,
+      `${pair(other)} · `, value(other),
     ]);
   }
 
-  function counterRow(entry, i, top, { compact = false, alt = null } = {}) {
+  // elite: { alt, list, okRank } für die Zeile "Ohne/Mit Elite-TM" (siehe eliteLine).
+  function counterRow(entry, i, top, { compact = false, elite = null } = {}) {
     const a = entry.attacker;
     // tabindex -1: Nach "Weitere anzeigen" springt der Fokus auf die erste neue Zeile.
     return el('li', { class: `row${!compact && i < 3 ? ` row--top row--top-${i + 1}` : ''}`, tabindex: '-1', style: { '--i': String(Math.min(i, 12)) } }, [
@@ -424,7 +436,7 @@ const Detail = (() => {
       el('div', { class: 'row__info' }, [
         el('p', { class: 'row__name' }, [el('span', { text: Raid.attackerName(a) }), ...Raid.attackerBadges(a)]),
         movesLine(entry),
-        alt ? eliteLine(entry, top, alt) : null,
+        elite ? eliteLine(entry, top, elite) : null,
       ]),
       el('div', { class: 'row__metric' }, [
         Raid.meter('Wertung', `${formatNumber((entry.score / top) * 100)} %`, entry.score / top, 'score'),
@@ -446,7 +458,7 @@ const Detail = (() => {
         el('h3', { class: 'section-title section-title--small', id: 'counters-title', text: 'Top-Konter' }),
         el('p', { id: 'counters-count', text: `Level ${state.level} · ${weatherName} · ${state.shadow ? 'mit' : 'ohne'} Crypto-Pokémon · ${state.elite ? 'mit' : 'ohne'} Elite-TM` }),
       ]),
-      list.length ? el('ol', { class: 'rows', id: 'counter-list' }, shown.map((entry, i) => counterRow(entry, i, top, { alt })))
+      list.length ? el('ol', { class: 'rows', id: 'counter-list' }, shown.map((entry, i) => counterRow(entry, i, top, { elite: { alt, list, okRank: LIST_STEP } })))
         : el('p', { class: 'state', text: 'Mit diesen Einstellungen bleibt kein Pokémon übrig.' }),
       more ? el('button', {
         type: 'button', class: 'more-btn', id: 'more',
@@ -465,6 +477,7 @@ const Detail = (() => {
     if (!megas.length) return null;
     const top = megas[0].score;
     const superMega = Boolean(boss.superMega);
+    const count = superMega ? SUPER_MEGA_COUNT : 3;
     return el('section', { class: `megas${superMega ? ' megas--super' : ''}`, 'aria-labelledby': 'megas-title' }, [
       el('div', { class: 'section-head' }, [
         el('h3', { class: 'section-title section-title--small', id: 'megas-title', text: superMega ? 'Beste Mega-Entwicklungen' : 'Beste Mega-Entwicklung' }),
@@ -472,7 +485,7 @@ const Detail = (() => {
           ? 'Im Super-Mega-Raid braucht jede Person eine: Nur echte Mega-Pokémon brechen mit ihrer Lade-Attacke die Schilde (Proto-Pokémon nicht). Sie stärkt außerdem die Attacken aller anderen (+10 %, ihres Typs +30 %).'
           : 'Pro Person ist nur eine aktiv. Sie stärkt außerdem die Attacken aller anderen im Raid (+10 %, ihres Typs +30 %).' }),
       ]),
-      el('ol', { class: 'rows rows--compact', id: 'mega-list' }, megas.slice(0, superMega ? SUPER_MEGA_COUNT : 3).map((entry, i) => counterRow(entry, i, top, { compact: true, alt }))),
+      el('ol', { class: 'rows rows--compact', id: 'mega-list' }, megas.slice(0, count).map((entry, i) => counterRow(entry, i, top, { compact: true, elite: { alt, list: megas, okRank: count } }))),
     ]);
   }
 

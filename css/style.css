@@ -910,7 +910,7 @@ main:focus, .boss__name:focus { outline: none; }
 .member__info { min-width: 0; }
 .member__name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; font-weight: 800; line-height: 1.25; }
 .member__moves { margin: 2px 0 0; font-size: .84rem; color: var(--muted); }
-.member__moves .badge { margin-left: 6px; }
+.member__moves { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
 .team__verdict {
   margin: 12px 0 0;
   padding: 12px 14px;
@@ -953,6 +953,7 @@ main:focus, .boss__name:focus { outline: none; }
 /* Wie gut wäre der Konter ohne (bzw. mit) Elite-TM? */
 .row__alt { margin: 6px 0 0; padding: 4px 8px; border-left: 3px solid #3ee0c966; border-radius: 0 6px 6px 0; background: #3ee0c90d; font-size: .8rem; color: var(--muted); }
 .row__alt-label { font-weight: 700; color: var(--text); }
+.row__alt-value { white-space: nowrap; }
 .row__alt--ok { border-left-color: var(--now); }
 .row__alt--ok strong { color: var(--now); }
 .row__alt--gain { border-left-color: var(--ultra); }
