@@ -68,6 +68,7 @@ const Detail = (() => {
   }
 
   const isElite = (attacker, moveId) => attacker.eliteFast.includes(moveId) || attacker.eliteCharged.includes(moveId);
+  const usesElite = (entry) => isElite(entry.attacker, entry.fast.id) || isElite(entry.attacker, entry.charged.id);
 
   function factorList(entries) {
     return el('div', { class: 'factor-list' }, entries.map(({ type, factor }) =>
@@ -310,7 +311,6 @@ const Detail = (() => {
         weather,
         el('div', { class: 'counter-controls__toggles' }, [
           toggle('legendary', 'Legendäre, Mysteriöse & Ultrabestien'),
-          toggle('elite', 'Elite-Attacken', 'nur mit Elite-TM oder von Events'),
         ]),
         bossMoveChoice('bossFast', 'Sofort-Attacke', boss.fast),
         bossMoveChoice('bossCharged', 'Lade-Attacke', boss.charged),
@@ -319,6 +319,8 @@ const Detail = (() => {
     return el('form', { class: 'counter-controls', id: 'counter-controls', autocomplete: 'off', onsubmit: (e) => e.preventDefault() }, [
       level,
       el('div', { class: 'crypto-switch' }, [toggle('shadow', 'Crypto-Pokémon', state.shadow ? 'an – Crypto-Pokémon zählen mit' : 'aus – nur normale Pokémon')]),
+      // Elite-Attacken gibt es nur per Elite-TM oder von Events – aus zeigt, was ohne geht.
+      el('div', { class: 'elite-switch' }, [toggle('elite', 'Elite-Attacken', state.elite ? 'an – auch Attacken nur per Elite-TM' : 'aus – nur Attacken ohne Elite-TM')]),
       more,
       changed ? el('button', {
         type: 'button', class: 'reset-btn', id: 'reset',
@@ -371,7 +373,7 @@ const Detail = (() => {
         Raid.pokemonArt(entry.attacker, { size: 'sm', shadow: entry.attacker.shadow }),
         el('div', { class: 'member__info' }, [
           el('p', { class: 'member__name' }, [el('span', { text: Raid.attackerName(entry.attacker) }), ...Raid.attackerBadges(entry.attacker)]),
-          el('p', { class: 'member__moves', text: `${entry.fast.name} + ${entry.charged.name}` }),
+          el('p', { class: 'member__moves' }, [`${entry.fast.name} + ${entry.charged.name}`, usesElite(entry) ? Raid.eliteBadge() : null]),
         ]),
       ]))),
       el('p', { class: 'team__verdict', id: 'team-verdict' }, [
@@ -382,7 +384,38 @@ const Detail = (() => {
     ]);
   }
 
-  function counterRow(entry, i, top, { compact = false } = {}) {
+  // Gegenstück zur gezeigten Liste mit umgekehrtem Elite-Schalter: Wie stünde jedes Pokémon ohne (bzw. mit)
+  // Elite-TM? Schlüssel: Angreifer, Wert: sein bester Eintrag dort und sein Platz in dieser Liste.
+  function eliteCounterpart(filter) {
+    const list = fullRanking({ ...state, elite: !state.elite }).filter((e) => passes(e, state) && filter(e));
+    return new Map(list.map((e, i) => [e.attacker.key, { entry: e, rank: i + 1 }]));
+  }
+
+  // Zeile unter den Attacken. Elite an: Nutzt der Konter eine Elite-Attacke, steht hier sein bestes Paar ohne
+  // Elite-TM – in derselben Wertung wie die Liste und mit dem Platz, den er ohne hätte. Elite aus: das bessere
+  // Paar mit Elite-TM, falls es eines gibt. So sieht man, ob sich die Elite-TM lohnt.
+  function eliteLine(entry, top, alt) {
+    const other = alt.get(entry.attacker.key);
+    const pair = (e) => `${e.fast.name} + ${e.charged.name}`;
+    const value = (o) => `${formatNumber((o.entry.score / top) * 100)} % · Platz ${o.rank}`;
+    if (state.elite) {
+      if (!usesElite(entry)) return null;
+      if (!other) return el('p', { class: 'row__alt' }, [el('span', { class: 'row__alt-label', text: 'Ohne Elite-TM: ' }), 'keine passenden Attacken']);
+      const strong = other.rank <= LIST_STEP;
+      return el('p', { class: `row__alt${strong ? ' row__alt--ok' : ''}` }, [
+        el('span', { class: 'row__alt-label', text: 'Ohne Elite-TM: ' }),
+        `${pair(other.entry)} · ${value(other)}`,
+        strong ? el('strong', { text: ' – lohnt sich auch so' }) : null,
+      ]);
+    }
+    if (!other || !usesElite(other.entry) || other.entry.score <= entry.score * 1.005) return null;
+    return el('p', { class: 'row__alt row__alt--gain' }, [
+      el('span', { class: 'row__alt-label', text: 'Mit Elite-TM: ' }),
+      `${pair(other.entry)} · ${value(other)}`,
+    ]);
+  }
+
+  function counterRow(entry, i, top, { compact = false, alt = null } = {}) {
     const a = entry.attacker;
     // tabindex -1: Nach "Weitere anzeigen" springt der Fokus auf die erste neue Zeile.
     return el('li', { class: `row${!compact && i < 3 ? ` row--top row--top-${i + 1}` : ''}`, tabindex: '-1', style: { '--i': String(Math.min(i, 12)) } }, [
@@ -391,6 +424,7 @@ const Detail = (() => {
       el('div', { class: 'row__info' }, [
         el('p', { class: 'row__name' }, [el('span', { text: Raid.attackerName(a) }), ...Raid.attackerBadges(a)]),
         movesLine(entry),
+        alt ? eliteLine(entry, top, alt) : null,
       ]),
       el('div', { class: 'row__metric' }, [
         Raid.meter('Wertung', `${formatNumber((entry.score / top) * 100)} %`, entry.score / top, 'score'),
@@ -402,7 +436,7 @@ const Detail = (() => {
     ]);
   }
 
-  function rankingSection(list) {
+  function rankingSection(list, alt) {
     const shown = list.slice(0, state.listSize);
     const top = list[0]?.score ?? 1;
     const more = Math.min(LIST_MAX, list.length) > state.listSize;
@@ -410,9 +444,9 @@ const Detail = (() => {
     return el('section', { class: 'counters', 'aria-labelledby': 'counters-title' }, [
       el('div', { class: 'section-head' }, [
         el('h3', { class: 'section-title section-title--small', id: 'counters-title', text: 'Top-Konter' }),
-        el('p', { id: 'counters-count', text: `Level ${state.level} · ${weatherName} · ${state.shadow ? 'mit' : 'ohne'} Crypto-Pokémon` }),
+        el('p', { id: 'counters-count', text: `Level ${state.level} · ${weatherName} · ${state.shadow ? 'mit' : 'ohne'} Crypto-Pokémon · ${state.elite ? 'mit' : 'ohne'} Elite-TM` }),
       ]),
-      list.length ? el('ol', { class: 'rows', id: 'counter-list' }, shown.map((entry, i) => counterRow(entry, i, top)))
+      list.length ? el('ol', { class: 'rows', id: 'counter-list' }, shown.map((entry, i) => counterRow(entry, i, top, { alt })))
         : el('p', { class: 'state', text: 'Mit diesen Einstellungen bleibt kein Pokémon übrig.' }),
       more ? el('button', {
         type: 'button', class: 'more-btn', id: 'more',
@@ -427,7 +461,7 @@ const Detail = (() => {
 
   // Mega-Entwicklungen getrennt: Pro Person ist im Raid nur eine aktiv. Bei Super-Mega-Bossen stehen sie ganz
   // oben und es sind mehr, denn dort braucht jede Person eine.
-  function megaSection(megas) {
+  function megaSection(megas, alt) {
     if (!megas.length) return null;
     const top = megas[0].score;
     const superMega = Boolean(boss.superMega);
@@ -438,7 +472,7 @@ const Detail = (() => {
           ? 'Im Super-Mega-Raid braucht jede Person eine: Nur echte Mega-Pokémon brechen mit ihrer Lade-Attacke die Schilde (Proto-Pokémon nicht). Sie stärkt außerdem die Attacken aller anderen (+10 %, ihres Typs +30 %).'
           : 'Pro Person ist nur eine aktiv. Sie stärkt außerdem die Attacken aller anderen im Raid (+10 %, ihres Typs +30 %).' }),
       ]),
-      el('ol', { class: 'rows rows--compact', id: 'mega-list' }, megas.slice(0, superMega ? SUPER_MEGA_COUNT : 3).map((entry, i) => counterRow(entry, i, top, { compact: true }))),
+      el('ol', { class: 'rows rows--compact', id: 'mega-list' }, megas.slice(0, superMega ? SUPER_MEGA_COUNT : 3).map((entry, i) => counterRow(entry, i, top, { compact: true, alt }))),
     ]);
   }
 
@@ -466,14 +500,16 @@ const Detail = (() => {
 
   function countersPanel(pokemon) {
     const all = ranking();
-    const normal = all.filter((e) => !isMega(e.attacker));
+    const isNormal = (e) => !isMega(e.attacker);
     // Bei Super-Mega-Bossen nur echte Mega-Entwicklungen: Proto-Pokémon brechen keine Schilde.
-    const megas = megaSection(all.filter((e) => (boss.superMega ? e.attacker.variant === 'mega' : isMega(e.attacker))));
+    const isMegaPick = (e) => (boss.superMega ? e.attacker.variant === 'mega' : isMega(e.attacker));
+    const normal = all.filter(isNormal);
+    const megas = megaSection(all.filter(isMegaPick), eliteCounterpart(isMegaPick));
     return [
       controls(),
       boss.superMega ? megas : null,
       all.length ? teamSection(all) : null,
-      rankingSection(normal),
+      rankingSection(normal, eliteCounterpart(isNormal)),
       boss.superMega ? null : megas,
       byTypeSection(normal, pokemon),
     ];

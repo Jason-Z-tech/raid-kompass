@@ -13,8 +13,11 @@ sowie die Crypto-Bosse aus 5-Sterne-Crypto-Raids. Dynamax- und Gigadynamax-Kämp
   - **Konter:** bestes Team für eine Person, die Top 10 (bis 50 über „Weitere anzeigen“) mit Attacken, DPS und TDO,
     getrennt davon die drei besten Mega-Entwicklungen, und aufklappbar die Besten je Angriffstyp.
     **Crypto-Pokémon sind standardmäßig aus** (sonst stünden fast nur sie oben) und lassen sich mit einem Schalter
-    dazunehmen. Level 30/40/50 direkt darüber; unter „Mehr Einstellungen“ Wetter, Legendäre/Mysteriöse/Ultrabestien,
-    Elite-Attacken und die Attacken des Bosses, falls man sie kennt.
+    dazunehmen. Daneben der Schalter **Elite-Attacken**: Ist er an, steht unter jedem Konter mit Elite-Attacke sein
+    bestes Paar ohne Elite-TM – mit Wertung und dem Platz, den er ohne hätte („lohnt sich auch so“, wenn er damit
+    noch in den Top 10 ist). Ist er aus, zählen nur Attacken ohne Elite-TM, und Konter, die mit Elite-TM besser wären,
+    zeigen das Paar mit Elite-TM. Level 30/40/50 direkt darüber; unter „Mehr Einstellungen“ Wetter,
+    Legendäre/Mysteriöse/Ultrabestien und die Attacken des Bosses, falls man sie kennt.
   - **Super-Mega-Raids:** Bosse, die (auch) als Super-Mega-Raid kommen, tragen die Marke „Super-Mega“ und oben
     einen Hinweis (Schilde, die nur echte Mega-Pokémon brechen – Proto-Groudon/-Kyogre nicht; 7 bis 10 Personen),
     samt dem, was gerade läuft (normaler Mega-Raid oder Super-Mega-Raid-Tag). Im Reiter „Konter“ stehen bei ihnen die
@@ -49,7 +52,7 @@ Nach etwa einer Minute ist die neue Version online. Die Git-Identität ist nur f
 (`Jason-Z-tech`, noreply-Adresse von GitHub) – so erscheint keine private E-Mail-Adresse in den Commits.
 
 **Wenn sich etwas in `js/` oder `css/` geändert hat:** vor dem Push in `index.html` und `datenschutz.html` den Zusatz
-`?v=2026-10-13-2` an den Skript- und Stylesheet-Adressen auf das heutige Datum setzen (suchen und ersetzen;
+`?v=2026-10-22` an den Skript- und Stylesheet-Adressen auf das heutige Datum setzen (suchen und ersetzen;
 am selben Tag mit `-2`, `-3` … anhängen).
 Browser behalten Dateien von GitHub Pages bis zu 10 Minuten und würden sonst alte und neue Skripte mischen.
 

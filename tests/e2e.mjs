@@ -78,6 +78,23 @@ const bossesOf = (group) => DATA.bosses.filter((b) => GROUP_OF[b.category] === g
 const isMegaAttacker = (a) => a.variant === 'mega' || a.variant === 'primal';
 const RANK_ALL = { level: 40, elite: true, weather: null, shadow: true, mega: true, legendary: true };
 const nameOf = (a) => (a.shadow ? `Crypto-${a.name}` : a.name);
+const usesEliteEntry = (e) => [e.fast.id, e.charged.id].some((id) => e.attacker.eliteFast.includes(id) || e.attacker.eliteCharged.includes(id));
+const pct = (x) => (x * 100).toLocaleString('de-CH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+// Erwartete Elite-Zeile unter einer Konter-Zeile (unabhängig von der Seite gerechnet): "list" ist die gezeigte Liste,
+// "other" dieselbe Liste mit umgekehrtem Elite-Schalter.
+function expectedEliteLine(entry, list, other, eliteOn) {
+  const top = list[0].score;
+  const i = other.findIndex((e) => e.attacker.key === entry.attacker.key);
+  const o = other[i];
+  const pair = (e) => `${e.fast.name} + ${e.charged.name}`;
+  if (eliteOn) {
+    if (!usesEliteEntry(entry)) return null;
+    if (!o) return 'Ohne Elite-TM: keine passenden Attacken';
+    return `Ohne Elite-TM: ${pair(o)} · ${pct(o.score / top)} % · Platz ${i + 1}${i + 1 <= 10 ? ' – lohnt sich auch so' : ''}`;
+  }
+  if (!o || !usesEliteEntry(o) || o.score <= entry.score * 1.005) return null;
+  return `Mit Elite-TM: ${pair(o)} · ${pct(o.score / top)} % · Platz ${i + 1}`;
+}
 
 // ---------- Zustand der Seite auslesen ----------
 
@@ -126,6 +143,7 @@ const detailState = (page) => page.eval(`(() => {
     mega: !!li.querySelector('.row__name .badge--mega, .row__name .badge--primal'),
     primal: !!li.querySelector('.row__name .badge--primal'),
     elite: !!li.querySelector('.badge--elite'),
+    alt: li.querySelector('.row__alt')?.textContent ?? null,
   });
   return {
     visible: !document.getElementById('view-detail').hidden,
@@ -144,6 +162,7 @@ const detailState = (page) => page.eval(`(() => {
       name: m.querySelector('.member__name span').textContent,
       mega: !!m.querySelector('.badge--mega, .badge--primal'),
       realMega: !!m.querySelector('.badge--mega'),
+      elite: !!m.querySelector('.member__moves .badge--elite'),
     })),
     verdict: document.getElementById('team-verdict')?.textContent ?? '',
     verdictStrong: document.querySelector('#team-verdict strong')?.textContent ?? '',
@@ -157,6 +176,8 @@ const detailState = (page) => page.eval(`(() => {
     reset: !!document.getElementById('reset'),
     megaToggle: !!document.getElementById('toggle-mega'),
     cryptoHint: document.querySelector('.crypto-switch small')?.textContent,
+    eliteHint: document.querySelector('.elite-switch small')?.textContent,
+    eliteVisible: !!document.querySelector('.elite-switch #toggle-elite') && !document.querySelector('#more-settings #toggle-elite'),
     level: document.querySelector('input[name=level]:checked')?.value,
     weather: document.getElementById('weather')?.value,
     toggles: Object.fromEntries([...document.querySelectorAll('#counter-controls input[type=checkbox]')].map((i) => [i.id, i.checked])),
@@ -460,6 +481,7 @@ async function checkDetail(page, s, boss, tag, { infos }) {
   check(s.facts['Spieler*innen'] === crowd, `${tag} Spieler*innen "${s.facts['Spieler*innen']}" statt "${crowd}"`);
   // Das Urteil unter dem Team gilt für die aktuelle Einstellung (ohne Crypto).
   const current = RaidCalc.estimateTrainers(DATA, boss, full.filter((e) => !e.attacker.shadow), { requireMega: Boolean(boss.superMega) });
+  check(JSON.stringify(s.team.map((m) => m.elite)) === JSON.stringify(current.team.map(usesEliteEntry)), `${tag} Elite-TM-Marken im Team passen nicht`);
   if (boss.shadow) check(lo >= 2 && !/allein/.test(s.verdict), `${tag} Crypto-Raid mit weniger als 2 Personen: "${s.verdict}"`);
   else if (current.raw > 1) check(s.verdictStrong.includes(`mindestens ${Math.ceil(current.raw - 1e-9)} Personen`), `${tag} Urteil "${s.verdictStrong}" passt nicht zu ${current.raw.toFixed(2)}`);
   else check(/allein/.test(s.verdictStrong), `${tag} Urteil "${s.verdictStrong}" sollte "allein" nennen (${current.raw.toFixed(2)})`);
@@ -549,6 +571,29 @@ async function testFilters(page, vp) {
   s = await detailState(page);
   check(!s.toggles['toggle-shadow'] && s.rows.every((r) => !r.shadow) && s.team.every((m) => !m.name.startsWith('Crypto-')) && !s.reset,
     `${tag} Crypto wieder aus: trotzdem Crypto-Pokémon`);
+
+  // Elite-Schalter: sichtbar neben Crypto. An: Jede Zeile mit Elite-Attacke nennt ihr bestes Paar ohne Elite-TM,
+  // mit Wertung und dem Platz, den sie ohne hätte. Aus: keine Elite-Attacken mehr, dafür bei Pokémon, die mit
+  // Elite-TM besser wären, das Paar mit Elite-TM. Beides unabhängig nachgerechnet.
+  {
+    const xerneas = DATA.bosses.find((b) => b.key === 'xerneas');
+    const pick = (e) => !e.attacker.shadow && !isMegaAttacker(e.attacker);
+    const on = RaidCalc.rank(DATA, xerneas, RANK_ALL).filter(pick);
+    const off = RaidCalc.rank(DATA, xerneas, { ...RANK_ALL, elite: false }).filter(pick);
+    check(s.eliteVisible && s.eliteHint?.startsWith('an') && s.countText.includes('mit Elite-TM'), `${tag} Elite-Schalter nicht sichtbar oder Anzeige falsch ("${s.eliteHint}", "${s.countText}")`);
+    const wrongOn = s.rows.filter((r, i) => r.alt !== expectedEliteLine(on[i], on, off, true));
+    check(s.rows.some((r) => r.alt) && wrongOn.length === 0, `${tag} Elite an: Zeile "Ohne Elite-TM" falsch bei ${wrongOn.map((r) => `${r.name}: "${r.alt}"`).join(' | ')}`);
+    await page.click('label.toggle:has(#toggle-elite)');
+    s = await detailState(page);
+    check(!s.toggles['toggle-elite'] && s.rows.every((r) => !r.elite) && s.eliteHint?.startsWith('aus') && s.countText.includes('ohne Elite-TM') && s.reset,
+      `${tag} Elite aus: trotzdem Elite-Attacken oder Anzeige falsch ("${s.eliteHint}", "${s.countText}")`);
+    check(await page.eval(`document.activeElement?.id === 'toggle-elite'`), `${tag} Fokus bleibt nicht auf dem Elite-Schalter`);
+    const wrongOff = s.rows.filter((r, i) => r.name !== nameOf(off[i].attacker) || r.alt !== expectedEliteLine(off[i], off, on, false));
+    check(wrongOff.length === 0, `${tag} Elite aus: Liste oder Zeile "Mit Elite-TM" falsch bei ${wrongOff.map((r) => `${r.name}: "${r.alt}"`).join(' | ')}`);
+    await page.click('label.toggle:has(#toggle-elite)');
+    s = await detailState(page);
+    check(s.toggles['toggle-elite'] && !s.reset, `${tag} Elite lässt sich nicht wieder einschalten`);
+  }
 
   // Mehr Einstellungen: Legendäre und Elite aus.
   await page.click('#more-settings > summary');

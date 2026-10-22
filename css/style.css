@@ -822,6 +822,15 @@ main:focus, .boss__name:focus { outline: none; }
 }
 .crypto-switch .toggle { color: var(--text); font-size: 1.02rem; }
 .crypto-switch .toggle input:checked + .toggle__track { background: var(--crypto); }
+/* Elite-Schalter daneben: zeigt, wie gut die Konter ohne Elite-TM sind. */
+.elite-switch {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #3ee0c955;
+  background: #3ee0c914;
+}
+.elite-switch .toggle { color: var(--text); font-size: 1.02rem; }
+.elite-switch .toggle input:checked + .toggle__track { background: #1fa391; }
 
 .toggle__text { display: grid; line-height: 1.25; }
 .toggle__text small { font-size: .78rem; font-weight: 600; color: var(--muted); }
@@ -901,6 +910,7 @@ main:focus, .boss__name:focus { outline: none; }
 .member__info { min-width: 0; }
 .member__name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; font-weight: 800; line-height: 1.25; }
 .member__moves { margin: 2px 0 0; font-size: .84rem; color: var(--muted); }
+.member__moves .badge { margin-left: 6px; }
 .team__verdict {
   margin: 12px 0 0;
   padding: 12px 14px;
@@ -940,6 +950,12 @@ main:focus, .boss__name:focus { outline: none; }
 .row__info { grid-area: info; min-width: 0; }
 .row__name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 6px; font-weight: 800; line-height: 1.25; }
 .row__moves { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0; font-size: .86rem; }
+/* Wie gut wäre der Konter ohne (bzw. mit) Elite-TM? */
+.row__alt { margin: 6px 0 0; padding: 4px 8px; border-left: 3px solid #3ee0c966; border-radius: 0 6px 6px 0; background: #3ee0c90d; font-size: .8rem; color: var(--muted); }
+.row__alt-label { font-weight: 700; color: var(--text); }
+.row__alt--ok { border-left-color: var(--now); }
+.row__alt--ok strong { color: var(--now); }
+.row__alt--gain { border-left-color: var(--ultra); }
 .row__plus { color: var(--muted); }
 .row__metric { grid-area: metric; min-width: 0; }
 .row__numbers { display: flex; gap: 14px; margin: 6px 0 0; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -1058,6 +1074,7 @@ main:focus, .boss__name:focus { outline: none; }
   .info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   .counter-controls { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; }
+  .counter-controls #level-filter { grid-column: 1 / -1; }
   .counter-controls__toggles, .counter-controls .reset-btn { grid-column: 1 / -1; }
 
   .row {
